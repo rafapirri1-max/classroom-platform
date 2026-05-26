@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🧠 Your Brain on Bias - Interactive Learning Game</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #6366f1; --secondary: #ec4899; --accent: #f59e0b;
+            --success: #10b981; --danger: #ef4444; --dark: #1e1b4b; --light: #f8fafc; --card: #ffffff;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
+            min-height: 100vh; color: var(--dark); overflow-x: hidden;
+        }
+        .app-container { max-width: 900px; margin: 0 auto; padding: 15px; min-height: 100vh; }
+        .home-screen { text-align: center; padding: 20px 10px; }
+        .brain-emoji { font-size: 80px; animation: float 3s ease-in-out infinite; display: inline-block; }
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-15px)} }
+        .title { font-size: 2.2rem; font-weight: 800; color: white; margin: 15px 0 5px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .subtitle { color: #c4b5fd; font-size: 1.1rem; margin-bottom: 30px; }
+        .player-stats {
+            background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px;
+            padding: 15px 25px; margin-bottom: 25px; display: inline-flex; gap: 30px; color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+        .stat-label { font-size: 0.8rem; opacity: 0.8; }
+        .games-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; margin-top: 20px; }
+        .game-card {
+            background: var(--card); border-radius: 20px; padding: 25px 20px; cursor: pointer;
+            transition: all 0.3s ease; border: 3px solid transparent; position: relative; overflow: hidden;
+        }
+        .game-card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); border-color: var(--primary); }
+        .game-card.locked { opacity: 0.5; cursor: not-allowed; }
+        .game-card.locked:hover { transform: none; box-shadow: none; border-color: transparent; }
+        .game-icon { font-size: 45px; margin-bottom: 10px; }
+        .game-title { font-size: 1.2rem; font-weight: 700; color: var(--dark); margin-bottom: 5px; }
+        .game-desc { font-size: 0.85rem; color: #64748b; line-height: 1.4; }
+        .game-progress { margin-top: 10px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+        .game-progress-bar { height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); border-radius: 3px; transition: width 0.5s ease; }
+        .difficulty-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; margin-top: 8px; text-transform: uppercase; }
+        .difficulty-easy { background: #d1fae5; color: #065f46; }
+        .difficulty-medium { background: #fef3c7; color: #92400e; }
+        .difficulty-hard { background: #fee2e2; color: #991b1b; }
+        .game-screen { display: none; animation: fadeIn 0.4s ease; }
+        .game-screen.active { display: block; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        .game-header {
+            display: flex; align-items: center; justify-content: space-between; padding: 15px;
+            background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 15px;
+            margin-bottom: 15px; color: white;
+        }
+        .back-btn {
+            background: rgba(255,255,255,0.2); border: none; color: white; padding: 10px 20px;
+            border-radius: 12px; cursor: pointer; font-size: 1rem; font-weight: 600; transition: all 0.2s;
+        }
+        .back-btn:hover { background: rgba(255,255,255,0.3); }
+        .game-score-display { font-size: 1.3rem; font-weight: 700; }
+        .game-content { background: var(--card); border-radius: 20px; padding: 25px; min-height: 60vh; }
+        .quiz-question { font-size: 1.3rem; font-weight: 700; color: var(--dark); margin-bottom: 20px; line-height: 1.5; }
+        .quiz-options { display: flex; flex-direction: column; gap: 12px; }
+        .quiz-option {
+            background: #f1f5f9; border: 3px solid transparent; border-radius: 15px; padding: 18px 20px;
+            cursor: pointer; font-size: 1.05rem; transition: all 0.2s; text-align: left;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .quiz-option:hover { background: #e0e7ff; border-color: var(--primary); transform: translateX(5px); }
+        .quiz-option.correct { background: #d1fae5; border-color: var(--success); color: #065f46; }
+        .quiz-option.wrong { background: #fee2e2; border-color: var(--danger); color: #991b1b; }
+        .quiz-option.disabled { pointer-events: none; opacity: 0.7; }
+        .option-letter { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+        .explanation-box { background: linear-gradient(135deg, #ede9fe, #ddd6fe); border-radius: 15px; padding: 20px; margin-top: 20px; border-left: 5px solid var(--primary); display: none; }
+        .explanation-box.show { display: block; animation: slideIn 0.4s ease; }
+        @keyframes slideIn { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
+        .next-btn {
+            background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; border: none;
+            padding: 15px 40px; border-radius: 15px; font-size: 1.1rem; font-weight: 700; cursor: pointer;
+            margin-top: 20px; width: 100%; transition: all 0.2s;
+        }
+        .next-btn:hover { transform: scale(1.02); box-shadow: 0 10px 30px rgba(99,102,241,0.4); }
+        .scenario-card { background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 20px; padding: 25px; margin-bottom: 20px; border: 3px solid #f59e0b; }
+        .scenario-title { font-size: 1.1rem; font-weight: 700; color: #92400e; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .scenario-text { font-size: 1.15rem; color: #78350f; line-height: 1.6; }
+        .scenario-choices { display: flex; flex-direction: column; gap: 12px; }
+        .scenario-choice { background: white; border: 3px solid #e2e8f0; border-radius: 15px; padding: 18px; cursor: pointer; font-size: 1rem; transition: all 0.2s; text-align: left; }
+        .scenario-choice:hover { border-color: var(--primary); transform: translateX(5px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .scenario-choice.selected-good { border-color: var(--success); background: #ecfdf5; }
+        .scenario-choice.selected-bad { border-color: var(--danger); background: #fef2f2; }
+        .matching-item { background: #f1f5f9; border: 3px solid transparent; border-radius: 15px; padding: 18px; cursor: pointer; text-align: center; font-size: 0.95rem; transition: all 0.2s; min-height: 80px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+        .matching-item:hover { border-color: var(--primary); background: #e0e7ff; }
+        .matching-item.selected { border-color: var(--primary); background: #c7d2fe; }
+        .matching-item.matched { background: #d1fae5; border-color: var(--success); pointer-events: none; }
+        .matching-item.wrong-match { animation: shake 0.5s ease; border-color: var(--danger); background: #fee2e2; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-10px)} 75%{transform:translateX(10px)} }
+        .detective-scene { background: linear-gradient(135deg, #1e1b4b, #312e81); border-radius: 20px; padding: 25px; color: white; margin-bottom: 20px; }
+        .detective-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
+        .clue-list { display: flex; flex-direction: column; gap: 10px; }
+        .clue-item { background: rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+        .clue-item:hover { background: rgba(255,255,255,0.2); border-color: var(--accent); }
+        .clue-item.found { background: rgba(16,185,129,0.3); border-color: var(--success); }
+        .results-screen { text-align: center; padding: 40px 20px; }
+        .results-emoji { font-size: 80px; margin-bottom: 20px; }
+        .results-title { font-size: 2rem; font-weight: 800; color: var(--dark); margin-bottom: 10px; }
+        .results-score { font-size: 3rem; font-weight: 800; background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .results-message { font-size: 1.1rem; color: #64748b; margin: 15px 0 30px; line-height: 1.6; }
+        .badge-earned { display: inline-block; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; padding: 12px 25px; border-radius: 20px; font-weight: 700; font-size: 1rem; margin: 10px; animation: bounceIn 0.6s ease; }
+        @keyframes bounceIn { 0%{transform:scale(0)} 50%{transform:scale(1.2)} 100%{transform:scale(1)} }
+        .progress-container { background: #e2e8f0; border-radius: 10px; height: 10px; margin: 15px 0; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); border-radius: 10px; transition: width 0.5s ease; }
+        .timer-display { font-size: 1.5rem; font-weight: 700; color: var(--accent); text-align: center; margin: 10px 0; }
+        .timer-display.urgent { color: var(--danger); animation: pulse 1s infinite; }
+        @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
+        .confetti-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000; overflow: hidden; }
+        .confetti { position: absolute; width: 10px; height: 10px; animation: confetti-fall 3s ease-out forwards; }
+        @keyframes confetti-fall { 0%{transform:translateY(-100px) rotate(0deg); opacity:1} 100%{transform:translateY(100vh) rotate(720deg); opacity:0} }
+        @media (max-width: 600px) {
+            .title { font-size: 1.6rem; } .games-grid { grid-template-columns: 1fr; }
+            .matching-grid { grid-template-columns: 1fr; } .quiz-question { font-size: 1.1rem; }
+            .game-content { padding: 15px; } .player-stats { gap: 15px; padding: 12px 18px; }
+        }
+        .intro-screen { text-align: center; padding: 30px 15px; color: white; }
+        .intro-text { font-size: 1.1rem; line-height: 1.8; margin: 20px 0; color: #c4b5fd; }
+        .start-btn {
+            background: linear-gradient(135deg, var(--accent), #f97316); color: white; border: none;
+            padding: 18px 50px; border-radius: 20px; font-size: 1.3rem; font-weight: 700; cursor: pointer;
+            margin-top: 20px; transition: all 0.3s; box-shadow: 0 10px 30px rgba(245,158,11,0.4);
+        }
+        .start-btn:hover { transform: scale(1.05); box-shadow: 0 15px 40px rgba(245,158,11,0.5); }
+        .feature-list { display: flex; flex-direction: column; gap: 12px; margin: 25px 0; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto; }
+        .feature-item { background: rgba(255,255,255,0.1); padding: 15px 20px; border-radius: 15px; display: flex; align-items: center; gap: 12px; font-size: 1rem; }
+        .feature-icon { font-size: 1.5rem; }
+        .learn-card { background: linear-gradient(135deg, #ede9fe, #c7d2fe); border-radius: 20px; padding: 25px; margin-bottom: 20px; border: 3px solid var(--primary); }
+        .learn-title { font-size: 1.3rem; font-weight: 700; color: var(--dark); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+        .learn-content { font-size: 1rem; line-height: 1.7; color: #334155; }
+        .learn-tip { background: #fef3c7; border-left: 4px solid var(--accent); padding: 15px; border-radius: 0 12px 12px 0; margin-top: 15px; font-weight: 600; color: #92400e; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div id="introScreen" class="intro-screen">
+            <div class="brain-emoji">🧠</div>
+            <h1 class="title">Your Brain on Bias</h1>
+            <p class="subtitle">Why Your Mind Plays Tricks on You</p>
+            <div class="intro-text">
+                Welcome, Bias Detective! Your brain has built-in shortcuts that can trick you. Learn to spot them, beat them, and level up your thinking!
+            </div>
+            <div class="feature-list">
+                <div class="feature-item"><span class="feature-icon">🎯</span><span><strong>Bias Quiz</strong> — Test your knowledge</span></div>
+                <div class="feature-item"><span class="feature-icon">🔍</span><span><strong>Detective Mode</strong> — Find hidden biases</span></div>
+                <div class="feature-item"><span class="feature-icon">🎭</span><span><strong>Scenarios</strong> — Make real choices</span></div>
+                <div class="feature-item"><span class="feature-icon">🧩</span><span><strong>Matching</strong> — Match bias to example</span></div>
+                <div class="feature-item"><span class="feature-icon">⚡</span><span><strong>Speed Challenge</strong> — Beat the clock</span></div>
+            </div>
+            <button class="start-btn" onclick="showHome()">🚀 Start Your Journey</button>
+        </div>
+        <div id="homeScreen" class="home-screen" style="display:none;">
+            <div class="brain-emoji">🧠</div>
+            <h1 class="title">Bias Detective HQ</h1>
+            <p class="subtitle">Level up your brain power!</p>
+            <div class="player-stats">
+                <div class="stat-item"><div class="stat-value" id="totalScore">0</div><div class="stat-label">Total XP</div></div>
+                <div class="stat-item"><div class="stat-value" id="gamesCompleted">0</div><div class="stat-label">Games Done</div></div>
+                <div class="stat-item"><div class="stat-value" id="badgesEarned">0</div><div class="stat-label">Badges</div></div>
+            </div>
+            <div class="games-grid">
+                <div class="game-card" onclick="startGame('learn')"><div class="game-icon">📚</div><div class="game-title">Learn the Basics</div><div class="game-desc">Discover what bias really is and how your brain works</div><span class="difficulty-badge difficulty-easy">Start Here</span><div class="game-progress"><div class="game-progress-bar" id="prog-learn" style="width:0%"></div></div></div>
+                <div class="game-card" onclick="startGame('quiz')"><div class="game-icon">🎯</div><div class="game-title">Bias Knowledge Quiz</div><div class="game-desc">10 questions to test what you know about cognitive biases</div><span class="difficulty-badge difficulty-easy">Easy</span><div class="game-progress"><div class="game-progress-bar" id="prog-quiz" style="width:0%"></div></div></div>
+                <div class="game-card" onclick="startGame('scenarios')"><div class="game-icon">🎭</div><div class="game-title">Real-Life Scenarios</div><div class="game-desc">Make choices in realistic situations and see the bias at work</div><span class="difficulty-badge difficulty-medium">Medium</span><div class="game-progress"><div class="game-progress-bar" id="prog-scenarios" style="width:0%"></div></div></div>
+                <div class="game-card" onclick="startGame('matching')"><div class="game-icon">🧩</div><div class="game-title">Bias Matcher</div><div class="game-desc">Match each bias type with its real-world example</div><span class="difficulty-badge difficulty-medium">Medium</span><div class="game-progress"><div class="game-progress-bar" id="prog-matching" style="width:0%"></div></div></div>
+                <div class="game-card" onclick="startGame('detective')"><div class="game-icon">🔍</div><div class="game-title">Bias Detective</div><div class="game-desc">Spot the hidden biases in news headlines and social posts</div><span class="difficulty-badge difficulty-hard">Hard</span><div class="game-progress"><div class="game-progress-bar" id="prog-detective" style="width:0%"></div></div></div>
+                <div class="game-card" onclick="startGame('speed')"><div class="game-icon">⚡</div><div class="game-title">Speed Challenge</div><div class="game-desc">Beat the clock! Identify biases as fast as you can</div><span class="difficulty-badge difficulty-hard">Hard</span><div class="game-progress"><div class="game-progress-bar" id="prog-speed" style="width:0%"></div></div></div>
+            </div>
+        </div>
+        <div id="gameScreen" class="game-screen">
+            <div class="game-header">
+                <button class="back-btn" onclick="showHome()">← Back</button>
+                <div class="game-score-display"><span id="currentGameScore">Score: 0</span> | <span id="currentGameQ">Q: 1/10</span></div>
+            </div>
+            <div class="progress-container"><div class="progress-fill" id="gameProgressBar" style="width:0%"></div></div>
+            <div id="timerDisplay" class="timer-display" style="display:none;">⏱️ 30s</div>
+            <div class="game-content" id="gameContent"></div>
+        </div>
+        <div id="resultsScreen" class="results-screen" style="display:none;">
+            <div class="results-emoji" id="resultsEmoji">🎉</div>
+            <h2 class="results-title" id="resultsTitle">Great Job!</h2>
+            <div class="results-score" id="resultsScore">850</div>
+            <p class="results-message" id="resultsMessage">You're becoming a true Bias Detective!</p>
+            <div id="badgesContainer"></div>
+            <button class="next-btn" onclick="showHome()" style="margin-top:30px;">🏠 Return to HQ</button>
+        </div>
+    </div>
+    <div class="confetti-container" id="confettiContainer"></div>
+
+<script>
+// ===================== GAME DATA =====================
+const gameData = {
+    learn: {
+        title: "Learn the Basics",
+        slides: [
+            { emoji: "🧠", title: "What Is Bias, Really?", content: "Biases are mental shortcuts your brain uses to make decisions quickly. Everyone has them — they are NOT a sign of stupidity! Your brain evolved these shortcuts over hundreds of thousands of years to keep you alive.", tip: "💡 Key insight: The first step to beating bias is admitting you have it." },
+            { emoji: "⚡", title: "Your Brain Team: Two Systems", content: "Your brain has two parts working together:<br><br>🦸 <strong>Amygdala (The Jumpy Superhero)</strong> — Reacts in just 20 milliseconds! It's emotional and fast, but sometimes wrong.<br><br>🧑‍🔬 <strong>Prefrontal Cortex (The Smart One)</strong> — Takes 100+ ms to decide. It's rational and careful, but slower.<br><br>The catch? For teens, the prefrontal cortex is still developing until about age 25!", tip: "💡 The emotional brain is 20x FASTER — that's why you react before you think!" },
+            { emoji: "🏕️", title: "Why Your Brain Is Built This Way", content: "In prehistoric times, your ancestors faced tigers and needed tribes to survive. Running from a rock (safe mistake) was better than getting eaten (deadly mistake). Being rejected by the tribe meant death.<br><br>Today, your ancient survival software is running in a modern world of smartphones and social media. The threats have changed, but your brain's shortcuts haven't!", tip: "💡 Biases aren't bugs — they're survival features that sometimes misfire today." },
+            { emoji: "🎯", title: "Confirmation Bias: The 'I Knew It!' Trap", content: "You seek information that supports what you already believe. When you find it, your brain releases dopamine (the reward chemical) — making you feel good!<br><br>This creates a dangerous loop: believe → seek proof → feel rewarded → believe harder.<br><br><strong>To fight it:</strong> Actively seek opinions that disagree with yours. Ask 'What would prove me wrong?'", tip: "💡 If nothing could change your mind, you're defending a position, not seeking truth." },
+            { emoji: "⚓", title: "Anchoring Bias: Why the First Number Sticks", content: "Your brain over-relies on the first piece of information (the 'anchor') and doesn't adjust enough.<br><br>Example: A shirt priced at $60 seems like a great deal when the original price was $120 — even if $60 is still overpriced!<br><br><strong>To fight it:</strong> Ask 'Would I pay this if I saw it for the first time?' Research the actual market price.", tip: "💡 The first number is rarely the correct number. Always question the anchor." },
+            { emoji: "🚌", title: "Bandwagon Effect: Jumping on Board", content: "You tend to believe or do something just because many others are, regardless of evidence. Your brain is wired to follow the group for safety.<br><br>Examples: Viral challenges, fads, holding back your opinion because 'nobody else thinks that.'<br><br><strong>To fight it:</strong> Ask 'Would I believe this if no one else did? Where is the evidence?'", tip: "💡 Popularity is not proof. Facts don't need a crowd to be true." },
+            { emoji: "✨", title: "More Brain Shortcuts to Watch For", content: "<strong>Halo Effect:</strong> One good trait makes you assume they have other good traits. (Good at sports → must be smart/kind)<br><br><strong>Blind-Spot Bias:</strong> You see bias in others easily, but not in yourself.<br><br><strong>Availability Bias:</strong> You judge likelihood by how easily examples come to mind. (Plane crashes seem common because they're in the news, but driving is much more dangerous.)", tip: "💡 Smartest people are those who know they might be wrong." },
+            { emoji: "🔍", title: "The SMART Check for Sources", content: "Before believing any information, check:<br><br><strong>S</strong> — Source: Who wrote this? What's their agenda?<br><strong>M</strong> — Motive: Why was this created?<br><strong>A</strong> — Accuracy: Can you verify with another source?<br><strong>R</strong> — Recency: Is this information up to date?<br><strong>T</strong> — Two sides: What's missing from this story?", tip: "💡 Accurate information is usually boring, not exciting. If a headline makes you furious or ecstatic, that's a red flag!" }
+        ]
+    },
+    quiz: {
+        title: "Bias Knowledge Quiz",
+        questions: [
+            { q: "What is the Amygdala's reaction time compared to the Prefrontal Cortex?", options: ["They react at the same speed", "Amygdala is 20ms, Prefrontal Cortex is 100+ ms", "Prefrontal Cortex is faster", "Neither reacts to threats"], correct: 1, explanation: "The Amygdala (emotional brain) reacts in just 20ms, while the Prefrontal Cortex (rational brain) takes 100+ ms. This speed difference is why you sometimes react emotionally before thinking rationally!" },
+            { q: "Until what age does the Prefrontal Cortex typically keep developing?", options: ["Age 12", "Age 16", "Age 25", "Age 35"], correct: 2, explanation: "The Prefrontal Cortex (the 'Smart One' that handles rational thinking) keeps developing until about age 25. This is why teenagers often rely more on emotional reactions!" },
+            { q: "What chemical does your brain release when you find information that confirms your beliefs?", options: ["Adrenaline", "Serotonin", "Dopamine", "Cortisol"], correct: 2, explanation: "Dopamine — the reward chemical! This is why Confirmation Bias feels so good. Your brain literally rewards you for finding supporting evidence, creating a dangerous feedback loop." },
+            { q: "In Anchoring Bias, what does the 'anchor' refer to?", options: ["A heavy weight holding you back", "The first piece of information you receive", "A type of boat", "Your strongest belief"], correct: 1, explanation: "The 'anchor' is the first piece of information you receive. Your brain uses it as a reference point and doesn't adjust enough from it — like a $120 original price making $60 seem like a great deal." },
+            { q: "What should you ask yourself to fight the Bandwagon Effect?", options: ["What do my friends think?", "Would I believe this if no one else did?", "Is this trending on social media?", "How many likes does this have?"], correct: 1, explanation: "'Would I believe this if no one else did?' This question removes the social pressure and forces you to evaluate the actual evidence. Popularity is not proof!" },
+            { q: "The Halo Effect makes you assume someone has other good traits because they have:", options: ["A lot of money", "One good trait", "Many friends", "A college degree"], correct: 1, explanation: "One good trait! If someone is good at sports, the Halo Effect makes you assume they're also smart and kind — even without evidence. One positive trait 'spills over' to create a glowing overall impression." },
+            { q: "What is Blind-Spot Bias?", options: ["Not being able to see physically", "Seeing bias in others but not yourself", "Ignoring all evidence", "Believing everything you read"], correct: 1, explanation: "Seeing bias in others but not yourself! It's the easiest bias to spot in other people and the hardest to see in yourself. That's why self-reflection is so important." },
+            { q: "According to Error Management Theory, why did biases evolve?", options: ["To make us smarter", "To help us survive", "To confuse our enemies", "To improve memory"], correct: 1, explanation: "To help us survive! Biases evolved over hundreds of thousands of years. Better a safe mistake (running from a rock) than a deadly one (getting eaten). Your brain prioritized survival over accuracy." },
+            { q: "What is a red flag that a headline might be biased or manipulative?", options: ["It has statistics", "It makes you furious or ecstatic", "It's from a news website", "It has a photo"], correct: 1, explanation: "If a headline makes you furious or ecstatic, that's a red flag! Accurate information is usually boring, not exciting. Strong emotional reactions are designed to bypass your rational thinking." },
+            { q: "What does the 'T' in SMART Check stand for?", options: ["Truth", "Time", "Two sides (what's missing)", "Trust"], correct: 2, explanation: "Two sides — what's missing from this story? The SMART Check stands for Source, Motive, Accuracy, Recency, and Two sides. Always ask what information is being left out!" }
+        ]
+    },
+    scenarios: {
+        title: "Real-Life Scenarios",
+        scenarios: [
+            { title: "🛒 Shopping Scenario", text: "You see a pair of headphones 'originally $200, now $80!' The brand is unknown, but the discount seems huge. Your friend says they're amazing.", choices: [
+                { text: "Buy them immediately — 60% off is a steal!", score: 0, feedback: "❌ Anchoring Bias! The '$200' price is the anchor. You don't know if $80 is actually fair for these headphones. Always research the real market price first." },
+                { text: "Check reviews and compare prices with other brands first", score: 10, feedback: "✅ Great thinking! You questioned the anchor and sought independent evidence. This is how you beat Anchoring Bias." },
+                { text: "Buy them because your friend recommended them", score: 2, feedback: "⚠️ Bandwagon Effect + Halo Effect! Your friend's opinion is valuable, but it shouldn't replace your own research. They might have different needs or be biased too." }
+            ]},
+            { title: "📱 Social Media Scenario", text: "A viral post claims a celebrity did something terrible. Thousands have shared it. The source is a gossip blog you've never heard of.", choices: [
+                { text: "Share it to warn your friends", score: 0, feedback: "❌ Bandwagon + Availability Bias! Just because many people share it doesn't make it true. Viral misinformation spreads exactly this way." },
+                { text: "Check reputable news sources before believing or sharing", score: 10, feedback: "✅ Excellent! You used the SMART Check. Reputable sources, verification, and waiting for facts are how you fight bias in the information age." },
+                { text: "Believe it because 'where there's smoke, there's fire'", score: 1, feedback: "⚠️ Confirmation Bias! You're assuming guilt without evidence. 'Smoke' can be manufactured. Always demand evidence, not assumptions." }
+            ]},
+            { title: "👥 Group Project Scenario", text: "In a group project, someone disagrees with your idea. You feel defensive and want to prove them wrong.", choices: [
+                { text: "Defend your idea strongly and list why they're wrong", score: 2, feedback: "⚠️ Confirmation Bias + Ego Protection! Your brain is trying to protect your self-image. But genuine growth comes from considering other perspectives." },
+                { text: "Genuinely consider their point and look for merit in it", score: 10, feedback: "✅ Perfect! You activated your Prefrontal Cortex instead of letting your Amygdala react. This is how smart people make better decisions." },
+                { text: "Agree with them to avoid conflict", score: 3, feedback: "⚠️ Bandwagon Effect! Just going along isn't the same as genuine consideration. You're still not using critical thinking — you're just avoiding it." }
+            ]},
+            { title: "🏫 School Election Scenario", text: "Your school is voting for class president. The most popular student is running, and everyone says they'll vote for them.", choices: [
+                { text: "Vote for them too — they're obviously the best choice", score: 0, feedback: "❌ Bandwagon Effect! Popularity doesn't equal capability. You're following the crowd instead of evaluating the candidates yourself." },
+                { text: "Research each candidate's actual plans and qualifications", score: 10, feedback: "✅ Outstanding! You removed social pressure and evaluated based on evidence. This is independent thinking at its best." },
+                { text: "Vote for the underdog because going against the crowd is cool", score: 3, feedback: "⚠️ Reverse Bandwagon! You're still letting the crowd dictate your choice — just in the opposite direction. Evaluate candidates on merit, not popularity or rebellion." }
+            ]},
+            { title: "📰 News Headline Scenario", text: "You read a headline: 'SHOCKING: Popular Drink Causes Cancer!' It makes you feel scared and angry.", choices: [
+                { text: "Stop drinking it immediately and tell everyone", score: 0, feedback: "❌ Multiple biases! The headline used emotional manipulation (fear/anger) to bypass your thinking. You reacted with your Amygdala, not your Prefrontal Cortex." },
+                { text: "Check the actual study, sample size, and who funded the research", score: 10, feedback: "✅ Brilliant detective work! You recognized the emotional manipulation and sought the actual evidence. This is exactly how to evaluate sensational claims." },
+                { text: "Ignore it because everything causes cancer these days", score: 2, feedback: "⚠️ Availability Bias in reverse! Just because you've seen many such claims doesn't mean this one is false. Each claim deserves independent evaluation." }
+            ]},
+            { title: "🎵 Music Opinion Scenario", text: "You strongly dislike a popular musician. A friend asks you to name something impressive about them.", choices: [
+                { text: "I can't — they're completely talentless", score: 0, feedback: "❌ Confirmation Bias! You're so committed to your negative view that you can't find ANY merit. If nothing could change your mind, you're defending a position, not seeking truth." },
+                { text: "Try to find at least one thing you can acknowledge", score: 10, feedback: "✅ Excellent! This exercise forces your brain to consider disconfirming evidence. It's uncomfortable but it's how you grow and overcome bias." },
+                { text: "Change the subject to avoid answering", score: 2, feedback: "⚠️ Avoidance! You're protecting your existing belief by refusing to engage. Growth requires discomfort sometimes." }
+            ]}
+        ]
+    },
+    matching: {
+        title: "Bias Matcher",
+        pairs: [
+            { bias: "Confirmation Bias", example: "Only following news sources that agree with your political views" },
+            { bias: "Anchoring Bias", example: "Thinking a $50 shirt is cheap because the store showed $100 first" },
+            { bias: "Bandwagon Effect", example: "Downloading an app just because 'everyone at school has it'" },
+            { bias: "Halo Effect", example: "Assuming a good-looking actor is also intelligent and kind" },
+            { bias: "Blind-Spot Bias", example: "Pointing out your friend's biased opinion while ignoring your own" },
+            { bias: "Availability Bias", example: "Being more afraid of plane crashes than car accidents" },
+            { bias: "Error Management Theory", example: "Your ancestor running from a shadow that might be a tiger" },
+            { bias: "Dopamine Reward", example: "Feeling good when you find an article that supports your belief" }
+        ]
+    },
+    detective: {
+        title: "Bias Detective",
+        cases: [
+            { title: "Case #1: The Influencer Post", text: "An influencer posts: 'This skincare product completely changed my life! I've never looked better. Use my code SKIN20 for 20% off! #ad #skincare #glowup'", clues: [
+                { text: "They use their own discount code", bias: "Financial incentive / hidden motive" },
+                { text: "'Completely changed my life' is extreme language", bias: "Emotional manipulation / exaggeration" },
+                { text: "Only positive claims, no downsides mentioned", bias: "Confirmation Bias / one-sided information" },
+                { text: "#ad tag is present but might be overlooked", bias: "Sponsored content disguised as genuine opinion" }
+            ]},
+            { title: "Case #2: The News Article", text: "Headline: 'LOCAL TEEN SAVES DOZENS IN HEROIC ACT!' Article: A teenager helped an elderly neighbor carry groceries. Only 3 sentences long.", clues: [
+                { text: "'Dozens' is a huge exaggeration for helping one person", bias: "Clickbait / sensationalism" },
+                { text: "Very short article with dramatic headline", bias: "Headline doesn't match content quality" },
+                { text: "Uses emotional words like 'heroic' to grab attention", bias: "Emotional manipulation" },
+                { text: "No sources or verification of the event", bias: "Lack of evidence / poor sourcing" }
+            ]},
+            { title: "Case #3: The Online Review", text: "Product review: '1 STAR! TERRIBLE! Broke after 2 days! DO NOT BUY! Worst company ever! Save your money!' Posted same day as 50 other 1-star reviews.", clues: [
+                { text: "Extreme language with ALL CAPS shouting", bias: "Emotional overreaction / amygdala-driven" },
+                { text: "Posted on same day as many similar reviews", bias: "Possible coordinated attack / bot activity" },
+                { text: "No details about how it broke or usage", bias: "Lack of specific evidence" },
+                { text: "Only negative, no attempt at balanced view", bias: "Confirmation Bias / one-sided" }
+            ]},
+            { title: "Case #4: The Political Meme", text: "Meme shows a politician with a quote: 'I hate poor people and want them to suffer.' No source cited. Shared 50,000 times.", clues: [
+                { text: "Quote seems too extreme to be real", bias: "Straw man / fabricated quote" },
+                { text: "No source or context provided", bias: "Unverifiable claim" },
+                { text: "Designed to provoke strong negative emotion", bias: "Emotional manipulation" },
+                { text: "High share count used as credibility signal", bias: "Bandwagon Effect / popularity = truth fallacy" }
+            ]}
+        ]
+    },
+    speed: {
+        title: "Speed Challenge",
+        questions: [
+            { text: "You only read news from sources you agree with.", bias: "Confirmation Bias", options: ["Confirmation Bias", "Anchoring Bias", "Bandwagon Effect", "Halo Effect"] },
+            { text: "A $200 jacket marked down to $100 seems like a great deal.", bias: "Anchoring Bias", options: ["Bandwagon Effect", "Anchoring Bias", "Blind-Spot Bias", "Availability Bias"] },
+            { text: "You assume the class president is also good at math because they're popular.", bias: "Halo Effect", options: ["Confirmation Bias", "Bandwagon Effect", "Halo Effect", "Anchoring Bias"] },
+            { text: "You notice your friend's biased opinion but never examine your own.", bias: "Blind-Spot Bias", options: ["Halo Effect", "Anchoring Bias", "Blind-Spot Bias", "Confirmation Bias"] },
+            { text: "You share a TikTok challenge because 'everyone is doing it.'", bias: "Bandwagon Effect", options: ["Anchoring Bias", "Bandwagon Effect", "Halo Effect", "Availability Bias"] },
+            { text: "You think shark attacks are common because you saw one in a movie.", bias: "Availability Bias", options: ["Confirmation Bias", "Blind-Spot Bias", "Availability Bias", "Bandwagon Effect"] },
+            { text: "Your brain releases dopamine when you find info that supports your belief.", bias: "Confirmation Bias", options: ["Confirmation Bias", "Anchoring Bias", "Halo Effect", "Bandwagon Effect"] },
+            { text: "You judge a product's quality by its high original price tag.", bias: "Anchoring Bias", options: ["Bandwagon Effect", "Halo Effect", "Anchoring Bias", "Blind-Spot Bias"] },
+            { text: "You vote for a candidate because all your friends support them.", bias: "Bandwagon Effect", options: ["Confirmation Bias", "Bandwagon Effect", "Anchoring Bias", "Availability Bias"] },
+            { text: "You think a good athlete must also be honest and hardworking.", bias: "Halo Effect", options: ["Blind-Spot Bias", "Halo Effect", "Confirmation Bias", "Bandwagon Effect"] },
+            { text: "You feel scared of flying but not driving, despite driving being more dangerous.", bias: "Availability Bias", options: ["Anchoring Bias", "Availability Bias", "Bandwagon Effect", "Halo Effect"] },
+            { text: "You dismiss evidence against your favorite team because 'they're the best.'", bias: "Confirmation Bias", options: ["Confirmation Bias", "Blind-Spot Bias", "Anchoring Bias", "Halo Effect"] }
+        ]
+    }
+};
+
+// ===================== GAME STATE =====================
+let gameState = {
+    totalScore: 0, gamesCompleted: 0, badges: [],
+    progress: { learn: 0, quiz: 0, scenarios: 0, matching: 0, detective: 0, speed: 0 },
+    currentGame: null, currentQuestion: 0, currentScore: 0, timer: null, timeLeft: 0
+};
+
+// ===================== NAVIGATION =====================
+function showHome() {
+    clearInterval(gameState.timer);
+    document.getElementById('introScreen').style.display = 'none';
+    document.getElementById('gameScreen').classList.remove('active');
+    document.getElementById('resultsScreen').style.display = 'none';
+    document.getElementById('homeScreen').style.display = 'block';
+    updateStats();
+}
+function startGame(gameType) {
+    gameState.currentGame = gameType;
+    gameState.currentQuestion = 0;
+    gameState.currentScore = 0;
+    clearInterval(gameState.timer);
+    document.getElementById('homeScreen').style.display = 'none';
+    document.getElementById('gameScreen').classList.add('active');
+    document.getElementById('resultsScreen').style.display = 'none';
+    if (gameType === 'learn') renderLearn();
+    else if (gameType === 'quiz') renderQuiz();
+    else if (gameType === 'scenarios') renderScenario();
+    else if (gameType === 'matching') renderMatching();
+    else if (gameType === 'detective') renderDetective();
+    else if (gameType === 'speed') renderSpeed();
+}
+function updateStats() {
+    document.getElementById('totalScore').textContent = gameState.totalScore;
+    document.getElementById('gamesCompleted').textContent = gameState.gamesCompleted;
+    document.getElementById('badgesEarned').textContent = gameState.badges.length;
+    for (let game in gameState.progress) {
+        const bar = document.getElementById('prog-' + game);
+        if (bar) bar.style.width = gameState.progress[game] + '%';
+    }
+}
+function updateGameProgress() {
+    let total, current;
+    const g = gameState.currentGame;
+    if (g === 'quiz') { total = gameData.quiz.questions.length; current = gameState.currentQuestion; }
+    else if (g === 'scenarios') { total = gameData.scenarios.scenarios.length; current = gameState.currentQuestion; }
+    else if (g === 'detective') { total = gameData.detective.cases.length; current = gameState.currentQuestion; }
+    else if (g === 'speed') { total = gameData.speed.questions.length; current = gameState.currentQuestion; }
+    else { total = gameData.learn.slides.length; current = gameState.currentQuestion; }
+    const pct = (current / total) * 100;
+    document.getElementById('gameProgressBar').style.width = pct + '%';
+    document.getElementById('currentGameQ').textContent = 'Q: ' + (current + 1) + '/' + total;
+    document.getElementById('currentGameScore').textContent = 'Score: ' + gameState.currentScore;
+}
+
+// ===================== LEARN MODE =====================
+function renderLearn() {
+    const slides = gameData.learn.slides;
+    const slide = slides[gameState.currentQuestion];
+    updateGameProgress();
+    document.getElementById('timerDisplay').style.display = 'none';
+    let html = '<div class="learn-card"><div class="learn-title">' + slide.emoji + ' ' + slide.title + '</div><div class="learn-content">' + slide.content + '</div><div class="learn-tip">' + slide.tip + '</div></div>';
+    if (gameState.currentQuestion < slides.length - 1) {
+        html += '<button class="next-btn" onclick="nextLearn()">Next →</button>';
+    } else {
+        html += '<button class="next-btn" onclick="finishGame()">Complete Lesson ✓</button>';
+    }
+    document.getElementById('gameContent').innerHTML = html;
+}
+function nextLearn() {
+    gameState.currentQuestion++;
+    gameState.currentScore += 50;
+    renderLearn();
+}
+
+// ===================== QUIZ MODE =====================
+function renderQuiz() {
+    const q = gameData.quiz.questions[gameState.currentQuestion];
+    updateGameProgress();
+    document.getElementById('timerDisplay').style.display = 'none';
+    let html = '<div class="quiz-question">' + q.q + '</div><div class="quiz-options">';
+    q.options.forEach((opt, i) => {
+        html += '<div class="quiz-option" onclick="selectQuizAnswer(' + i + ')" id="opt-' + i + '"><span class="option-letter">' + String.fromCharCode(65 + i) + '</span><span>' + opt + '</span></div>';
+    });
+    html += '</div><div class="explanation-box" id="explanationBox"><strong>💡 Explanation:</strong><br><span id="explanationText"></span></div><button class="next-btn" id="quizNextBtn" style="display:none;" onclick="nextQuiz()">Next →</button>';
+    document.getElementById('gameContent').innerHTML = html;
+}
+function selectQuizAnswer(index) {
+    const q = gameData.quiz.questions[gameState.currentQuestion];
+    const options = document.querySelectorAll('.quiz-option');
+    options.forEach(opt => opt.classList.add('disabled'));
+    if (index === q.correct) {
+        document.getElementById('opt-' + index).classList.add('correct');
+        gameState.currentScore += 100;
+    } else {
+        document.getElementById('opt-' + index).classList.add('wrong');
+        document.getElementById('opt-' + q.correct).classList.add('correct');
+    }
+    document.getElementById('explanationText').innerHTML = q.explanation;
+    document.getElementById('explanationBox').classList.add('show');
+    document.getElementById('quizNextBtn').style.display = 'block';
+    document.getElementById('currentGameScore').textContent = 'Score: ' + gameState.currentScore;
+}
+function nextQuiz() {
+    gameState.currentQuestion++;
+    if (gameState.currentQuestion >= gameData.quiz.questions.length) finishGame();
+    else renderQuiz();
+}
+
+// ===================== SCENARIOS MODE =====================
+function renderScenario() {
+    const s = gameData.scenarios.scenarios[gameState.currentQuestion];
+    updateGameProgress();
+    document.getElementById('timerDisplay').style.display = 'none';
+    let html = '<div class="scenario-card"><div class="scenario-title">' + s.title + '</div><div class="scenario-text">' + s.text + '</div></div><div class="scenario-choices" id="scenarioChoices">';
+    s.choices.forEach((choice, i) => {
+        html += '<div class="scenario-choice" onclick="selectScenario(' + i + ')" id="scen-' + i + '">' + choice.text + '</div>';
+    });
+    html += '</div><div class="explanation-box" id="scenarioFeedback" style="display:none;"><span id="scenarioFeedbackText"></span></div><button class="next-btn" id="scenarioNextBtn" style="display:none;" onclick="nextScenario()">Next →</button>';
+    document.getElementById('gameContent').innerHTML = html;
+}
+function selectScenario(index) {
+    const s = gameData.scenarios.scenarios[gameState.currentQuestion];
+    const choice = s.choices[index];
+    const choices = document.querySelectorAll('.scenario-choice');
+    choices.forEach(c => { c.style.pointerEvents = 'none'; c.style.opacity = '0.5'; });
+    const selected = document.getElementById('scen-' + index);
+    selected.style.opacity = '1';
+    if (choice.score >= 8) selected.classList.add('selected-good');
+    else if (choice.score <= 2) selected.classList.add('selected-bad');
+    else { selected.style.borderColor = 'var(--accent)'; selected.style.background = '#fef3c7'; }
+    gameState.currentScore += choice.score * 10;
+    document.getElementById('scenarioFeedbackText').innerHTML = choice.feedback;
+    document.getElementById('scenarioFeedback').style.display = 'block';
+    document.getElementById('scenarioFeedback').classList.add('show');
+    document.getElementById('scenarioNextBtn').style.display = 'block';
+    document.getElementById('currentGameScore').textContent = 'Score: ' + gameState.currentScore;
+}
+function nextScenario() {
+    gameState.currentQuestion++;
+    if (gameState.currentQuestion >= gameData.scenarios.scenarios.length) finishGame();
+    else renderScenario();
+}
+
+// ===================== MATCHING MODE =====================
+let matchingState = { selected: null, matched: 0, shuffledBiases: [], shuffledExamples: [] };
+function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+}
+function renderMatching() {
+    updateGameProgress();
+    document.getElementById('timerDisplay').style.display = 'none';
+    document.getElementById('currentGameQ').textContent = 'Match all pairs!';
+    const pairs = [...gameData.matching.pairs];
+    matchingState.shuffledBiases = shuffle([...pairs]);
+    matchingState.shuffledExamples = shuffle([...pairs]);
+    matchingState.matched = 0;
+    matchingState.selected = null;
+    let html = '<div class="quiz-question">🧩 Match each Bias with its Example</div><div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">';
+    html += '<div><div style="font-weight:700; color: var(--primary); margin-bottom:10px; text-align:center;">BIAS TYPE</div><div id="biasColumn">';
+    matchingState.shuffledBiases.forEach((item, i) => {
+        html += '<div class="matching-item" data-type="bias" data-index="' + i + '" data-value="' + item.bias + '" onclick="selectMatch(this)">' + item.bias + '</div>';
+    });
+    html += '</div></div><div><div style="font-weight:700; color: var(--secondary); margin-bottom:10px; text-align:center;">EXAMPLE</div><div id="exampleColumn">';
+    matchingState.shuffledExamples.forEach((item, i) => {
+        html += '<div class="matching-item" data-type="example" data-index="' + i + '" data-value="' + item.bias + '" onclick="selectMatch(this)">' + item.example + '</div>';
+    });
+    html += '</div></div></div><div id="matchingFeedback" style="margin-top:20px; text-align:center; font-weight:700; font-size:1.1rem;"></div>';
+    document.getElementById('gameContent').innerHTML = html;
+}
+function selectMatch(element) {
+    if (element.classList.contains('matched')) return;
+    if (!matchingState.selected) {
+        matchingState.selected = element;
+        element.classList.add('selected');
+        return;
+    }
+    const prev = matchingState.selected;
+    if (prev.dataset.type === element.dataset.type) {
+        prev.classList.remove('selected');
+        element.classList.add('selected');
+        matchingState.selected = element;
+        return;
+    }
+    if (prev.dataset.value === element.dataset.value) {
+        prev.classList.remove('selected'); prev.classList.add('matched');
+        element.classList.add('matched');
+        matchingState.matched++;
+        gameState.currentScore += 125;
+        document.getElementById('currentGameScore').textContent = 'Score: ' + gameState.currentScore;
+        document.getElementById('matchingFeedback').innerHTML = '<span style="color: var(--success);">✅ Match found! ' + matchingState.matched + '/' + gameData.matching.pairs.length + '</span>';
+        if (matchingState.matched >= gameData.matching.pairs.length) setTimeout(() => finishGame(), 1000);
+    } else {
+        prev.classList.remove('selected'); prev.classList.add('wrong-match');
+        element.classList.add('wrong-match');
+        setTimeout(() => { prev.classList.remove('wrong-match'); element.classList.remove('wrong-match'); }, 500);
+        document.getElementById('matchingFeedback').innerHTML = '<span style="color: var(--danger);">❌ Not a match. Try again!</span>';
+    }
+    matchingState.selected = null;
+}
+
+// ===================== DETECTIVE MODE =====================
+function renderDetective() {
+    const c = gameData.detective.cases[gameState.currentQuestion];
+    updateGameProgress();
+    document.getElementById('timerDisplay').style.display = 'none';
+    let html = '<div class="detective-scene"><div class="detective-title">🔍 ' + c.title + '</div><div style="font-size:1rem; line-height:1.6; margin-bottom:15px;">' + c.text + '</div><div style="font-size:0.9rem; opacity:0.8; margin-bottom:10px;">Click on the clues to identify the biases:</div><div class="clue-list">';
+    c.clues.forEach((clue, i) => {
+        html += '<div class="clue-item" onclick="findClue(this, ' + i + ')" id="clue-' + i + '">❓ ' + clue.text + '</div>';
+    });
+    html += '</div></div><div id="detectiveFeedback" style="text-align:center; font-weight:700; font-size:1.1rem; margin-top:15px;"></div><button class="next-btn" id="detectiveNextBtn" style="display:none;" onclick="nextDetective()">Next Case →</button>';
+    document.getElementById('gameContent').innerHTML = html;
+}
+function findClue(element, index) {
+    if (element.classList.contains('found')) return;
+    const c = gameData.detective.cases[gameState.currentQuestion];
+    const clue = c.clues[index];
+    element.classList.add('found');
+    element.innerHTML = '✅ ' + clue.text + '<br><span style="font-size:0.85rem; opacity:0.8;">Bias: ' + clue.bias + '</span>';
+    gameState.currentScore += 75;
+    document.getElementById('currentGameScore').textContent = 'Score: ' + gameState.currentScore;
+    const allFound = c.clues.every((_, i) => document.getElementById('clue-' + i).classList.contains('found'));
+    if (allFound) {
+        document.getElementById('detectiveFeedback').innerHTML = '<span style="color: var(--success);">🎉 All biases found! Great detective work!</span>';
+        document.getElementById('detectiveNextBtn').style.display = 'block';
+    }
+}
+function nextDetective() {
+    gameState.currentQuestion++;
+    if (gameState.currentQuestion >= gameData.detective.cases.length) finishGame();
+    else renderDetective();
+}
+
+// ===================== SPEED MODE =====================
+function renderSpeed() {
+    const q = gameData.speed.questions[gameState.currentQuestion];
+    updateGameProgress();
+    document.getElementById('timerDisplay').style.display = 'block';
+    gameState.timeLeft = 15;
+    document.getElementById('timerDisplay').textContent = '⏱️ ' + gameState.timeLeft + 's';
+    document.getElementById('timerDisplay').classList.remove('urgent');
+    clearInterval(gameState.timer);
+    gameState.timer = setInterval(() => {
+        gameState.timeLeft--;
+        document.getElementById('timerDisplay').textContent = '⏱️ ' + gameState.timeLeft + 's';
+        if (gameState.timeLeft <= 5) document.getElementById('timerDisplay').classList.add('urgent');
+        if (gameState.timeLeft <= 0) {
+            clearInterval(gameState.timer);
+            selectSpeedAnswer(-1);
+        }
+    }, 1000);
+    let html = '<div class="quiz-question">⚡ ' + q.text + '</div><div class="quiz-options">';
+    q.options.forEach((opt, i) => {
+        html += '<div class="quiz-option" onclick="selectSpeedAnswer(' + i + ')" id="speed-opt-' + i + '"><span class="option-letter">' + String.fromCharCode(65 + i) + '</span><span>' + opt + '</span></div>';
+    });
+    html += '</div>';
+    document.getElementById('gameContent').innerHTML = html;
+}
+function selectSpeedAnswer(index) {
+    clearInterval(gameState.timer);
+    const q = gameData.speed.questions[gameState.currentQuestion];
+    const options = document.querySelectorAll('.quiz-option');
+    options.forEach(opt => opt.classList.add('disabled'));
+    if (index >= 0 && q.options[index] === q.bias) {
+        document.getElementById('speed-opt-' + index).classList.add('correct');
+        const timeBonus = gameState.timeLeft * 10;
+        gameState.currentScore += 100 + timeBonus;
+    } else {
+        if (index >= 0) document.getElementById('speed-opt-' + index).classList.add('wrong');
+        const correctIndex = q.options.indexOf(q.bias);
+        document.getElementById('speed-opt-' + correctIndex).classList.add('correct');
+    }
+    document.getElementById('currentGameScore').textContent = 'Score: ' + gameState.currentScore;
+    setTimeout(() => {
+        gameState.currentQuestion++;
+        if (gameState.currentQuestion >= gameData.speed.questions.length) finishGame();
+        else renderSpeed();
+    }, 1200);
+}
+
+// ===================== FINISH GAME =====================
+function finishGame() {
+    clearInterval(gameState.timer);
+    document.getElementById('gameScreen').classList.remove('active');
+    document.getElementById('resultsScreen').style.display = 'block';
+    gameState.totalScore += gameState.currentScore;
+    gameState.gamesCompleted++;
+    gameState.progress[gameState.currentGame] = 100;
+    const gameType = gameState.currentGame;
+    let emoji, title, message;
+    if (gameState.currentScore >= 800) {
+        emoji = '🏆'; title = 'Outstanding!'; message = 'You are a master Bias Detective! Your brain power is off the charts!';
+        if (!gameState.badges.includes('Master Detective')) gameState.badges.push('Master Detective');
+    } else if (gameState.currentScore >= 500) {
+        emoji = '🌟'; title = 'Great Job!'; message = 'You are becoming a true Bias Detective! Keep sharpening your skills.';
+        if (!gameState.badges.includes('Rising Detective')) gameState.badges.push('Rising Detective');
+    } else {
+        emoji = '👍'; title = 'Good Effort!'; message = 'Every detective starts somewhere. Review the lessons and try again!';
+        if (!gameState.badges.includes('First Steps')) gameState.badges.push('First Steps');
+    }
+    if (gameType === 'speed' && gameState.currentScore >= 1000) {
+        if (!gameState.badges.includes('Speed Demon')) gameState.badges.push('Speed Demon');
+    }
+    if (gameType === 'detective' && gameState.currentScore >= 800) {
+        if (!gameState.badges.includes('Sharp Eye')) gameState.badges.push('Sharp Eye');
+    }
+    document.getElementById('resultsEmoji').textContent = emoji;
+    document.getElementById('resultsTitle').textContent = title;
+    document.getElementById('resultsScore').textContent = gameState.currentScore;
+    document.getElementById('resultsMessage').textContent = message;
+    let badgesHtml = '';
+    gameState.badges.forEach(badge => {
+        badgesHtml += '<div class="badge-earned">🏅 ' + badge + '</div>';
+    });
+    document.getElementById('badgesContainer').innerHTML = badgesHtml;
+    if (gameState.currentScore >= 500) launchConfetti();
+}
+
+function launchConfetti() {
+    const container = document.getElementById('confettiContainer');
+    container.innerHTML = '';
+    const colors = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
+    for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + '%';
+        confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.animationDelay = Math.random() * 2 + 's';
+        confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+        confetti.style.width = (Math.random() * 10 + 5) + 'px';
+        confetti.style.height = (Math.random() * 10 + 5) + 'px';
+        container.appendChild(confetti);
+    }
+    setTimeout(() => { container.innerHTML = ''; }, 4000);
+}
+</script>
+</body>
+</html>
