@@ -1,11 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
 
 export default function Home() {
-  const [roomCode, setRoomCode] = useState('')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlRoomCode = searchParams.get('room') || ''
+  
+  const [roomCode, setRoomCode] = useState(urlRoomCode)
   const [name, setName] = useState('')
   const [classCode, setClassCode] = useState('')
   const [loading, setLoading] = useState(true)
@@ -13,7 +17,6 @@ export default function Home() {
   const [profile, setProfile] = useState<any>(null)
   const [myClasses, setMyClasses] = useState<any[]>([])
   const [showJoinClass, setShowJoinClass] = useState(false)
-  const router = useRouter()
 
   useEffect(() => { loadUserData() }, [])
 
@@ -32,12 +35,36 @@ export default function Home() {
 
   const handleJoinRoom = async () => {
     if (!roomCode.trim() || !name.trim()) return
+    
+    // Look up room by code to get UUID
+    const { data: room } = await supabase
+      .from('rooms').select('id, code, status').eq('code', roomCode.toUpperCase()).single()
+    
+    if (!room) {
+      alert('Room not found. Check the code and try again.')
+      return
+    }
+    
+    if (room.status === 'closed') {
+      alert('This room is closed.')
+      return
+    }
+    
+    // Add participant
+    await supabase.from('participants').insert({
+      room_id: room.id,
+      name: name,
+      participant_id: Math.random().toString(36).substring(2, 15)
+    })
+    
     if (user && profile) {
       await supabase.from('game_sessions').insert({
         student_id: profile.id, game_type: 'join', mode: 'room', room_code: roomCode.toUpperCase(), score: 0, completed: false
       })
     }
-    router.push(`/student/${roomCode}?name=${encodeURIComponent(name)}`)
+    
+    // Redirect to room with UUID
+    router.push(`/student/${room.id}?name=${encodeURIComponent(name)}`)
   }
 
   const handleJoinClass = async () => {
@@ -118,52 +145,4 @@ export default function Home() {
                   <input type="text" value={classCode} onChange={(e) => setClassCode(e.target.value.toUpperCase())}
                     className="flex-1 bg-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Enter class code" maxLength={6} />
                   <button onClick={handleJoinClass} disabled={!classCode.trim()}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg transition">Join</button>
-                </div>
-              </div>
-            )}
-            {myClasses.length === 0 ? (
-              <p className="text-gray-500 text-sm">No classes yet. Join a class with a code from your teacher.</p>
-            ) : (
-              <div className="space-y-2">
-                {myClasses.map((enrollment) => (
-                  <div key={enrollment.id} className="bg-gray-700/50 rounded-lg p-3 flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{enrollment.classes?.class_name}</div>
-                      <div className="text-xs text-gray-500">Code: {enrollment.classes?.class_code}</div>
-                    </div>
-                    <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">Enrolled</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {user && profile && (
-          <div className="bg-gray-800 rounded-xl p-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><span>📈</span> My Progress</h2>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-400">{myClasses.length}</div>
-                <div className="text-xs text-gray-500">Classes</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-400">—</div>
-                <div className="text-xs text-gray-500">Games Played</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-400">—</div>
-                <div className="text-xs text-gray-500">Badges</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="text-center">
-          <a href="/teacher/login" className="text-sm text-gray-500 hover:text-gray-400 transition">Are you a teacher? Login here →</a>
-        </div>
-      </main>
-    </div>
-  )
-}
+                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py
