@@ -11,22 +11,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 })
 
-// Helper to get current user
 export async function getCurrentUser() {
   const { data: { user } } = await supabase.auth.getUser()
   return user
 }
 
-// Helper to check if user is teacher
-export async function isTeacher() {
+export async function getUserProfile() {
   const user = await getCurrentUser()
-  if (!user) return false
-  
-  const { data } = await supabase
-    .from('students')
-    .select('role')
-    .eq('auth_id', user.id)
-    .single()
-    
-  return data?.role === 'teacher'
+  if (!user) return null
+  const { data } = await supabase.from('students').select('*').eq('auth_id', user.id).single()
+  return data
+}
+
+export async function isTeacher() {
+  const profile = await getUserProfile()
+  return profile?.role === 'teacher'
 }
