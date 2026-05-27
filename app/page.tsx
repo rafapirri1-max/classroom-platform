@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const urlRoomCode = searchParams.get('room') || ''
@@ -35,35 +35,20 @@ export default function Home() {
 
   const handleJoinRoom = async () => {
     if (!roomCode.trim() || !name.trim()) return
-    
-    // Look up room by code to get UUID
     const { data: room } = await supabase
       .from('rooms').select('id, code, status').eq('code', roomCode.toUpperCase()).single()
-    
-    if (!room) {
-      alert('Room not found. Check the code and try again.')
-      return
-    }
-    
-    if (room.status === 'closed') {
-      alert('This room is closed.')
-      return
-    }
-    
-    // Add participant
+    if (!room) { alert('Room not found.'); return }
+    if (room.status === 'closed') { alert('This room is closed.'); return }
     await supabase.from('participants').insert({
       room_id: room.id,
       name: name,
       participant_id: Math.random().toString(36).substring(2, 15)
     })
-    
     if (user && profile) {
       await supabase.from('game_sessions').insert({
         student_id: profile.id, game_type: 'join', mode: 'room', room_code: roomCode.toUpperCase(), score: 0, completed: false
       })
     }
-    
-    // Redirect to room with UUID
     router.push(`/student/${room.id}?name=${encodeURIComponent(name)}`)
   }
 
@@ -192,5 +177,13 @@ export default function Home() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   )
 }
