@@ -145,4 +145,52 @@ export default function Home() {
                   <input type="text" value={classCode} onChange={(e) => setClassCode(e.target.value.toUpperCase())}
                     className="flex-1 bg-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Enter class code" maxLength={6} />
                   <button onClick={handleJoinClass} disabled={!classCode.trim()}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py
+                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg transition">Join</button>
+                </div>
+              </div>
+            )}
+            {myClasses.length === 0 ? (
+              <p className="text-gray-500 text-sm">No classes yet. Join a class with a code from your teacher.</p>
+            ) : (
+              <div className="space-y-2">
+                {myClasses.map((enrollment) => (
+                  <div key={enrollment.id} className="bg-gray-700/50 rounded-lg p-3 flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{enrollment.classes?.class_name}</div>
+                      <div className="text-xs text-gray-500">Code: {enrollment.classes?.class_code}</div>
+                    </div>
+                    <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">Enrolled</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {user && profile && (
+          <div className="bg-gray-800 rounded-xl p-6">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><span>📈</span> My Progress</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-400">{myClasses.length}</div>
+                <div className="text-xs text-gray-500">Classes</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-400">—</div>
+                <div className="text-xs text-gray-500">Games Played</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-400">—</div>
+                <div className="text-xs text-gray-500">Badges</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="text-center">
+          <a href="/teacher/login" className="text-sm text-gray-500 hover:text-gray-400 transition">Are you a teacher? Login here →</a>
+        </div>
+      </main>
+    </div>
+  )
+}
