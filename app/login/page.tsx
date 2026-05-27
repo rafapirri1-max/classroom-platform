@@ -8,7 +8,6 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Check if already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) router.push('/')
     })
