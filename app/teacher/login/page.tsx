@@ -16,14 +16,17 @@ export default function TeacherLoginPage() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        supabase.from('students').select('role').eq('auth_id', session.user.id).single()
-          .then(({ data }) => {
-            if (data?.role === 'teacher') router.push('/teacher')
-            else router.push('/')
-          })
+        checkRoleAndRedirect(session.user.id)
       }
     })
   }, [router])
+
+  async function checkRoleAndRedirect(userId: string) {
+    const { data } = await supabase.from('students').select('role').eq('auth_id', userId).single()
+    if (data?.role === 'teacher') {
+      router.push('/teacher')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,20 +39,37 @@ export default function TeacherLoginPage() {
         password,
         options: { data: { full_name: name } }
       })
-      if (signUpError) { setError(signUpError.message); setLoading(false); return }
+      if (signUpError) { 
+        setError(signUpError.message)
+        setLoading(false)
+        return
+      }
       if (data.user) {
-        await supabase.from('students').insert({
+        const { error: insertError } = await supabase.from('students').insert({
           auth_id: data.user.id,
           email: data.user.email,
           name: name || email.split('@')[0],
           role: 'teacher'
         })
-        setLoading(false)
-        router.push('/teacher')
+        
+        if (insertError) {
+          setError('Account created but profile error: ' + insertError.message)
+          setLoading(false)
+          return
+        }
+        
+        setTimeout(() => {
+          setLoading(false)
+          router.push('/teacher')
+        }, 1000)
       }
     } else {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-      if (signInError) { setError(signInError.message); setLoading(false); return }
+      if (signInError) { 
+        setError(signInError.message)
+        setLoading(false)
+        return
+      }
       if (data.user) {
         const { data: profile } = await supabase.from('students').select('role').eq('auth_id', data.user.id).single()
         if (profile?.role === 'teacher') {
