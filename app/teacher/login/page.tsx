@@ -39,47 +39,78 @@ export default function TeacherLoginPage() {
         password,
         options: { data: { full_name: name } }
       })
+      
       if (signUpError) { 
         setError(signUpError.message)
         setLoading(false)
         return
       }
-      if (data.user) {
-        const { error: insertError } = await supabase.from('students').insert({
+      
+      if (!data.user) {
+        setError('Signup failed - no user created')
+        setLoading(false)
+        return
+      }
+
+      // CRITICAL FIX: Use .select() to confirm insert, and handle error properly
+      const { data: insertData, error: insertError } = await supabase
+        .from('students')
+        .insert({
           auth_id: data.user.id,
           email: data.user.email,
           name: name || email.split('@')[0],
           role: 'teacher'
         })
-        
-        if (insertError) {
-          setError('Account created but profile error: ' + insertError.message)
-          setLoading(false)
-          return
-        }
-        
-        setTimeout(() => {
-          setLoading(false)
-          router.push('/teacher')
-        }, 1000)
+        .select()
+
+      if (insertError) {
+        console.error('INSERT FAILED:', insertError)
+        setError('Profile creation failed: ' + insertError.message + ' (Code: ' + insertError.code + ')')
+        setLoading(false)
+        return
       }
+
+      console.log('INSERT SUCCESS:', insertData)
+      setLoading(false)
+      router.push('/teacher')
+      
     } else {
+      // LOGIN
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      
       if (signInError) { 
         setError(signInError.message)
         setLoading(false)
         return
       }
-      if (data.user) {
-        const { data: profile } = await supabase.from('students').select('role').eq('auth_id', data.user.id).single()
-        if (profile?.role === 'teacher') {
-          setLoading(false)
-          router.push('/teacher')
-        } else {
-          setError('This account is not registered as a teacher.')
-          setLoading(false)
-          await supabase.auth.signOut()
-        }
+      
+      if (!data.user) {
+        setError('Login failed - no user found')
+        setLoading(false)
+        return
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('students')
+        .select('role')
+        .eq('auth_id', data.user.id)
+        .single()
+
+      if (profileError) {
+        console.error('PROFILE LOOKUP ERROR:', profileError)
+        setError('Profile lookup failed: ' + profileError.message)
+        setLoading(false)
+        await supabase.auth.signOut()
+        return
+      }
+
+      if (profile?.role === 'teacher') {
+        setLoading(false)
+        router.push('/teacher')
+      } else {
+        setError('This account is not registered as a teacher.')
+        setLoading(false)
+        await supabase.auth.signOut()
       }
     }
   }
