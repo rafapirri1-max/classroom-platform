@@ -658,6 +658,12 @@ function launchConfetti() {
     }
     setTimeout(() => { container.innerHTML = ''; }, 4000);
 
+    // Make functions global for tracking hooks
+window.selectQuizAnswer = selectQuizAnswer;
+window.selectScenario = selectScenario;
+window.selectSpeedAnswer = selectSpeedAnswer;
+window.finishGame = finishGame;
+    
     // ===================== TRACKING INTEGRATION =====================
 // This hooks into existing game functions to send data to parent window
 
