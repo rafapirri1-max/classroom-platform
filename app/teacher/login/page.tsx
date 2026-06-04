@@ -1,167 +1,227 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, getUserProfile } from '@/lib/supabase'
 
-export default function TeacherLoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
-  const [isSignup, setIsSignup] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+export default function TeacherDashboard() {
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
+  const [classes, setClasses] = useState<any[]>([])
+  const [rooms, setRooms] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        checkRoleAndRedirect(session.user.id)
-      }
-    })
-  }, [router])
+  useEffect(() => { checkAuth() }, [])
 
-  async function checkRoleAndRedirect(userId: string) {
-    const { data } = await supabase.from('students').select('role').eq('auth_id', userId).single()
-    if (data?.role === 'teacher') {
-      router.push('/teacher')
+  async function checkAuth() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
+
+    setUser(session.user)
+    const prof = await getUserProfile()
+    setProfile(prof)
+
+    if (prof?.role !== 'teacher') { router.push('/'); return }
+
+    const { data: classData } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('teacher_id', prof.id)
+      .order('created_at', { ascending: false })
+
+    setClasses(classData || [])
+
+    const { data: roomData } = await supabase
+      .from('rooms')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    setRooms(roomData || [])
+    setLoading(false)
+  }
+
+  async function createRoom() {
+    const code = Math.floor(1000 + Math.random() * 9000).toString()
+    const { data, error } = await supabase
+      .from('rooms')
+      .insert({ code, status: 'active' })
+      .select()
+      .single()
+
+    if (error) {
+      alert('Error creating room: ' + error.message)
+      return
+    }
+
+    if (data) {
+      router.push(`/teacher/room/${data.id}`)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
-    if (isSignup) {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: name } }
-      })
-      
-      if (signUpError) { 
-        setError(signUpError.message)
-        setLoading(false)
-        return
-      }
-      
-      if (!data.user) {
-        setError('Signup failed - no user created')
-        setLoading(false)
-        return
-      }
-
-      // CRITICAL FIX: Use .select() to confirm insert, and handle error properly
-      const { data: insertData, error: insertError } = await supabase
-        .from('students')
-        .insert({
-          auth_id: data.user.id,
-          email: data.user.email,
-          name: name || email.split('@')[0],
-          role: 'teacher'
-        })
-        .select()
-
-      if (insertError) {
-        console.error('INSERT FAILED:', insertError)
-        setError('Profile creation failed: ' + insertError.message + ' (Code: ' + insertError.code + ')')
-        setLoading(false)
-        return
-      }
-
-      console.log('INSERT SUCCESS:', insertData)
-      setLoading(false)
-      router.push('/teacher')
-      
-    } else {
-      // LOGIN
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-      
-      if (signInError) { 
-        setError(signInError.message)
-        setLoading(false)
-        return
-      }
-      
-      if (!data.user) {
-        setError('Login failed - no user found')
-        setLoading(false)
-        return
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from('students')
-        .select('role')
-        .eq('auth_id', data.user.id)
-        .single()
-
-      if (profileError) {
-        console.error('PROFILE LOOKUP ERROR:', profileError)
-        setError('Profile lookup failed: ' + profileError.message)
-        setLoading(false)
-        await supabase.auth.signOut()
-        return
-      }
-
-      if (profile?.role === 'teacher') {
-        setLoading(false)
-        router.push('/teacher')
-      } else {
-        setError('This account is not registered as a teacher.')
-        setLoading(false)
-        await supabase.auth.signOut()
-      }
-    }
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-gray-800 rounded-xl p-8">
-        <div className="text-center mb-6">
-          <div className="text-4xl mb-2">🏫</div>
-          <h1 className="text-2xl font-bold text-white">Teacher Portal</h1>
-          <p className="text-gray-400 text-sm mt-1">Professional tools for educators</p>
+    <div className="min-h-screen bg-gray-900 text-white">
+      <header className="bg-gray-800 border-b border-gray-700 p-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <a href="/" className="text-gray-400 hover:text-white transition flex items-center gap-1">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Home
+            </a>
+            <span className="text-gray-600">|</span>
+            <h1 className="text-xl font-bold">Teacher Dashboard</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-400 hidden sm:inline">{user?.email}</span>
+            <button onClick={handleLogout}
+              className="text-sm text-red-400 hover:text-red-300 px-3 py-1 rounded border border-red-900 hover:bg-red-900/30 transition">
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto p-6">
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-gray-800 rounded-xl p-6">
+            <div className="text-3xl font-bold text-blue-400">{classes.length}</div>
+            <div className="text-gray-400 text-sm mt-1">Active Classes</div>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-6">
+            <div className="text-3xl font-bold text-green-400">
+              {classes.reduce((acc, c) => acc + (c.student_count || 0), 0)}
+            </div>
+            <div className="text-gray-400 text-sm mt-1">Total Students</div>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-6">
+            <div className="text-3xl font-bold text-purple-400">{rooms.length}</div>
+            <div className="text-gray-400 text-sm mt-1">Active Rooms</div>
+          </div>
         </div>
 
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded mb-4">{error}</div>
-        )}
+        {/* Classes Section */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold">My Classes</h2>
+            <a href="/teacher/classes/create"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Class
+            </a>
+          </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isSignup && (
-            <div>
-              <label className="block text-gray-300 text-sm mb-1">Full Name</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-                className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+          {classes.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📚</div>
+              <h3 className="text-lg font-medium text-gray-300 mb-2">No classes yet</h3>
+              <p className="text-gray-500 mb-4">Create your first class to get started.</p>
+              <a href="/teacher/classes/create"
+                className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition">
+                Create First Class
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {classes.map((cls) => (
+                <div key={cls.id} className="bg-gray-700/50 rounded-lg p-4 flex items-center justify-between hover:bg-gray-700 transition">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-900/50 rounded-lg flex items-center justify-center text-2xl">🏫</div>
+                    <div>
+                      <h3 className="font-semibold">{cls.class_name}</h3>
+                      <p className="text-sm text-gray-400">
+                        Code: <span className="font-mono text-blue-400">{cls.class_code}</span>
+                      </p>
+                      <p className="text-xs text-gray-500">{cls.subject || 'No subject'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right mr-4">
+                      <div className="text-sm font-medium">{cls.student_count || 0} students</div>
+                      <div className="text-xs text-gray-500">{cls.session_count || 0} sessions</div>
+                    </div>
+                    <a href={`/teacher/classes/${cls.id}`}
+                      className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded-lg transition text-sm">
+                      View
+                    </a>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-          <div>
-            <label className="block text-gray-300 text-sm mb-1">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-          </div>
-          <div>
-            <label className="block text-gray-300 text-sm mb-1">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" required minLength={6} />
-          </div>
-          <button type="submit" disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition">
-            {loading ? 'Loading...' : isSignup ? 'Create Teacher Account' : 'Sign In as Teacher'}
-          </button>
-        </form>
-
-        <p className="mt-4 text-center text-gray-400 text-sm">
-          {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <button onClick={() => { setIsSignup(!isSignup); setError('') }}
-            className="text-blue-400 hover:text-blue-300 underline">{isSignup ? 'Sign in' : 'Sign up'}</button>
-        </p>
-
-        <div className="mt-6 pt-6 border-t border-gray-700 text-center">
-          <a href="/login" className="text-sm text-gray-500 hover:text-gray-400">Student login →</a>
         </div>
-      </div>
+
+        {/* Rooms Section */}
+        <div className="bg-gray-800 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold">🎮 Live Rooms</h2>
+            <button
+              onClick={createRoom}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Room
+            </button>
+          </div>
+
+          {rooms.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🎮</div>
+              <h3 className="text-lg font-medium text-gray-300 mb-2">No rooms yet</h3>
+              <p className="text-gray-500 mb-4">Create a room to launch games with students.</p>
+              <button onClick={createRoom}
+                className="inline-block bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition">
+                Create First Room
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {rooms.map((room) => (
+                <div key={room.id}
+                  onClick={() => router.push(`/teacher/room/${room.id}`)}
+                  className="bg-gray-700/50 rounded-lg p-4 flex items-center justify-between hover:bg-gray-700 transition cursor-pointer">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-purple-900/50 rounded-lg flex items-center justify-center text-2xl">🎮</div>
+                    <div>
+                      <h3 className="font-semibold">Room {room.code}</h3>
+                      <p className="text-sm text-gray-400">
+                        Created {new Date(room.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      room.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
+                    }`}>
+                      {room.status.toUpperCase()}
+                    </span>
+                    <span className="text-sm text-gray-400">View →</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   )
 }
