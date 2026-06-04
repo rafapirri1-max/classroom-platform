@@ -44,11 +44,24 @@ function HomeContent() {
       .single()
     if (!room) { alert('Room not found.'); return }
     if (room.status === 'closed') { alert('This room is closed.'); return }
-    await supabase.from('participants').insert({
-      room_id: room.id,
-      name: name,
-      participant_id: Math.random().toString(36).substring(2, 15)
-    })
+
+    // FIXED: Prevent duplicate participants
+    const participantId = name.toLowerCase().trim().replace(/\s+/g, '-')
+    const { data: existing } = await supabase
+      .from('participants')
+      .select('*')
+      .eq('room_id', room.id)
+      .eq('participant_id', participantId)
+      .single()
+
+    if (!existing) {
+      await supabase.from('participants').insert({
+        room_id: room.id,
+        name: name,
+        participant_id: participantId
+      })
+    }
+
     if (user && profile) {
       await supabase.from('game_sessions').insert({
         student_id: profile.id,
@@ -228,7 +241,7 @@ function HomeContent() {
         )}
 
         <div className="text-center">
-          <a href="/teacher/login" className="text-sm text-gray-500 hover:text-gray-400 transition">
+          <a href="/login" className="text-sm text-gray-500 hover:text-gray-400 transition">
             Are you a teacher? Login here →
           </a>
         </div>
