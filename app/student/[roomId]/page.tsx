@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
 
@@ -13,8 +13,11 @@ export default function StudentPage() {
   const [room, setRoom] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<any>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [gameStartTime, setGameStartTime] = useState<number>(0)
+  
+  // Use refs for tracking so message handler always has current values
+  const sessionIdRef = useRef<string | null>(null)
+  const gameStartTimeRef = useRef<number>(0)
+  const profileRef = useRef<any>(null)
 
   const loadRoom = useCallback(async () => {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
@@ -26,7 +29,10 @@ export default function StudentPage() {
     setLoading(false)
 
     // Load user profile for tracking
-    getUserProfile().then(prof => setProfile(prof))
+    getUserProfile().then(prof => {
+      setProfile(prof)
+      profileRef.current = prof
+    })
 
     const channel = supabase.channel(`student-room-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, async (payload) => {
@@ -38,7 +44,9 @@ export default function StudentPage() {
             payload.new.current_activity !== 'wordcloud' &&
             payload.new.current_activity !== payload.old?.current_activity) {
           
+          const prof = profileRef.current
           if (prof?.id) {
+            console.log('Starting tracking session...')
             const res = await fetch('/api/track', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -53,9 +61,11 @@ export default function StudentPage() {
               })
             })
             const data = await res.json()
+            console.log('Start session response:', data)
             if (data.session_id) {
-              setSessionId(data.session_id)
-              setGameStartTime(Date.now())
+              sessionIdRef.current = data.session_id
+              gameStartTimeRef.current = Date.now()
+              console.log('Session started:', data.session_id)
             }
           }
         }
@@ -68,32 +78,41 @@ export default function StudentPage() {
   // Listen for messages from the game iframe
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      if (!sessionId) return
+      const currentSessionId = sessionIdRef.current
+      
+      if (!currentSessionId) {
+        console.log('No session ID yet, ignoring message:', event.data)
+        return
+      }
 
       if (event.data.type === 'GAME_ANSWER') {
-        await fetch('/api/track', {
+        console.log('Recording answer:', event.data.data)
+        const res = await fetch('/api/track', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'record_answer',
             data: {
-              session_id: sessionId,
+              session_id: currentSessionId,
               ...event.data.data
             }
           })
         })
+        const result = await res.json()
+        console.log('Record answer response:', result)
       }
 
       if (event.data.type === 'GAME_COMPLETE') {
-        const timeSeconds = Math.round((Date.now() - gameStartTime) / 1000)
-        await fetch('/api/track', {
+        console.log('Game complete:', event.data.data)
+        const timeSeconds = Math.round((Date.now() - gameStartTimeRef.current) / 1000)
+        const res = await fetch('/api/track', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'end_session',
             data: {
-              session_id: sessionId,
-              student_id: profile?.id,
+              session_id: currentSessionId,
+              student_id: profileRef.current?.id,
               score: event.data.data.score,
               accuracy_percent: event.data.data.accuracy_percent,
               time_spent_seconds: timeSeconds,
@@ -101,12 +120,14 @@ export default function StudentPage() {
             }
           })
         })
+        const result = await res.json()
+        console.log('End session response:', result)
       }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sessionId, gameStartTime, profile])
+  }, []) // Empty dependency array — runs once on mount
 
   if (loading) {
     return (
