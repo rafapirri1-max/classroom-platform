@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, getUserProfile } from '@/lib/supabase'
 
 export default function StudentPage() {
   const params = useParams()
@@ -12,6 +12,9 @@ export default function StudentPage() {
 
   const [room, setRoom] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<any>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [gameStartTime, setGameStartTime] = useState<number>(0)
 
   const loadRoom = useCallback(async () => {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
@@ -22,14 +25,88 @@ export default function StudentPage() {
     loadRoom()
     setLoading(false)
 
+    // Load user profile for tracking
+    getUserProfile().then(prof => setProfile(prof))
+
     const channel = supabase.channel(`student-room-${roomId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, async (payload) => {
         setRoom(payload.new)
+        
+        // Start tracking when game launches
+        if (payload.new.current_activity !== 'waiting' && 
+            payload.new.current_activity !== 'poll' && 
+            payload.new.current_activity !== 'wordcloud' &&
+            payload.new.current_activity !== payload.old?.current_activity) {
+          
+          if (prof?.id) {
+            const res = await fetch('/api/track', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'start_session',
+                data: {
+                  student_id: prof.id,
+                  game_type: payload.new.current_activity,
+                  mode: 'room',
+                  room_code: payload.new.code
+                }
+              })
+            })
+            const data = await res.json()
+            if (data.session_id) {
+              setSessionId(data.session_id)
+              setGameStartTime(Date.now())
+            }
+          }
+        }
       })
       .subscribe()
 
     return () => { channel.unsubscribe() }
   }, [roomId, loadRoom])
+
+  // Listen for messages from the game iframe
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (!sessionId) return
+
+      if (event.data.type === 'GAME_ANSWER') {
+        await fetch('/api/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'record_answer',
+            data: {
+              session_id: sessionId,
+              ...event.data.data
+            }
+          })
+        })
+      }
+
+      if (event.data.type === 'GAME_COMPLETE') {
+        const timeSeconds = Math.round((Date.now() - gameStartTime) / 1000)
+        await fetch('/api/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'end_session',
+            data: {
+              session_id: sessionId,
+              student_id: profile?.id,
+              score: event.data.data.score,
+              accuracy_percent: event.data.data.accuracy_percent,
+              time_spent_seconds: timeSeconds,
+              completed: true
+            }
+          })
+        })
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [sessionId, gameStartTime, profile])
 
   if (loading) {
     return (
@@ -52,8 +129,6 @@ export default function StudentPage() {
   }
 
   const activity = room.current_activity || 'waiting'
-
-  // If activity is a game ID (not 'waiting', 'poll', 'wordcloud'), load it from games folder
   const isGame = activity !== 'waiting' && activity !== 'poll' && activity !== 'wordcloud'
 
   return (
