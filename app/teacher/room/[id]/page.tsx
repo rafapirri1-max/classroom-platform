@@ -74,6 +74,31 @@ export default function TeacherRoomPage() {
     await supabase.from('rooms').update({ status: 'closed' }).eq('id', roomId)
   }
 
+  // KICK OUT STUDENT
+  async function kickStudent(participantId: string) {
+    const { error } = await supabase
+      .from('participants')
+      .delete()
+      .eq('id', participantId)
+    
+    if (error) {
+      alert('Error removing student: ' + error.message)
+    }
+  }
+
+  // KICK ALL STUDENTS
+  async function kickAllStudents() {
+    if (!confirm('Remove ALL students from this room?')) return
+    const { error } = await supabase
+      .from('participants')
+      .delete()
+      .eq('room_id', roomId)
+    
+    if (error) {
+      alert('Error removing students: ' + error.message)
+    }
+  }
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-white">Loading...</div>
   if (!room) return <div className="min-h-screen flex items-center justify-center text-white">Room not found</div>
 
@@ -93,6 +118,9 @@ export default function TeacherRoomPage() {
             <p className="text-indigo-200">{participants.length} students connected</p>
           </div>
           <div className="flex gap-3">
+            <button onClick={kickAllStudents} className="px-4 py-2 bg-orange-500/20 text-orange-300 rounded-xl hover:bg-orange-500/30 text-sm">
+              🚫 Remove All
+            </button>
             <button onClick={closeRoom} className="px-4 py-2 bg-red-500/20 text-red-300 rounded-xl hover:bg-red-500/30 text-sm">
               🚪 Close Room
             </button>
@@ -138,7 +166,10 @@ export default function TeacherRoomPage() {
               ))}
             </div>
 
-            <h2 className="text-xl font-bold text-white mb-4">👥 Connected Students</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white">👥 Connected Students</h2>
+            </div>
+            
             {participants.length === 0 ? (
               <div className="bg-white/10 rounded-2xl p-8 text-center text-indigo-200">
                 No students yet. Share the QR code or room code.
@@ -146,9 +177,16 @@ export default function TeacherRoomPage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {participants.map((p) => (
-                  <div key={p.id} className="bg-white/10 rounded-xl p-3 text-center border border-white/10">
+                  <div key={p.id} className="bg-white/10 rounded-xl p-3 text-center border border-white/10 relative group">
                     <div className="text-2xl mb-1">👤</div>
                     <div className="text-white font-semibold text-sm truncate">{p.name}</div>
+                    <button
+                      onClick={() => kickStudent(p.id)}
+                      className="absolute top-1 right-1 w-6 h-6 bg-red-500/80 hover:bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Remove student"
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
