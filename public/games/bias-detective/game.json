@@ -1,0 +1,11 @@
+{
+  "id": "bias-detective",
+  "name": "Bias Detective",
+  "icon": "🧠",
+  "description": "Spot cognitive biases in real-world scenarios",
+  "difficulty": "medium",
+  "minPlayers": 1,
+  "maxPlayers": 50,
+  "duration": "15-20 min",
+  "tracking": true
+}
