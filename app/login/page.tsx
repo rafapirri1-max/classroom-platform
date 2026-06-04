@@ -1,0 +1,134 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [isSignup, setIsSignup] = useState(false)
+  const [error, setError] = useState('')
+  const [isTeacher, setIsTeacher] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.push('/')
+    })
+  }, [router])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    if (isSignup) {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: name } }
+      })
+      if (signUpError) { setError(signUpError.message); return }
+      if (data.user) {
+        await supabase.from('students').insert({
+          auth_id: data.user.id,
+          email: data.user.email,
+          name: name || email.split('@')[0],
+          role: isTeacher ? 'teacher' : 'student'
+        })
+        router.push(isTeacher ? '/teacher' : '/')
+      }
+    } else {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signInError) { setError(signInError.message); return }
+      if (data.user) {
+        const { data: profile } = await supabase.from('students').select('role').eq('auth_id', data.user.id).single()
+        router.push(profile?.role === 'teacher' ? '/teacher' : '/')
+      }
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-gray-800 rounded-xl p-8">
+        <h1 className="text-2xl font-bold text-white mb-2 text-center">
+          {isTeacher ? 'Teacher' : 'Student'} {isSignup ? 'Sign Up' : 'Login'}
+        </h1>
+        <p className="text-gray-400 text-center mb-6">
+          {isSignup ? 'Create your account' : 'Sign in to continue'}
+        </p>
+
+        {error && (
+          <div className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded mb-4">{error}</div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignup && (
+            <div>
+              <label className="block text-gray-300 text-sm mb-1">Full Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-gray-300 text-sm mb-1">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-gray-300 text-sm mb-1">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              minLength={6}
+            />
+          </div>
+
+          {isSignup && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="teacher"
+                checked={isTeacher}
+                onChange={(e) => setIsTeacher(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label htmlFor="teacher" className="text-gray-300 text-sm">I am a teacher</label>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+          >
+            {isSignup ? 'Create Account' : 'Sign In'}
+          </button>
+        </form>
+
+        <p className="mt-4 text-center text-gray-400 text-sm">
+          {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
+          <button
+            onClick={() => { setIsSignup(!isSignup); setError('') }}
+            className="text-blue-400 hover:text-blue-300 underline"
+          >
+            {isSignup ? 'Sign in' : 'Sign up'}
+          </button>
+        </p>
+      </div>
+    </div>
+  )
+}
