@@ -5,7 +5,7 @@
 ### Adding a New Game (2 Steps)
 
 1. Create folder `app/games/my-game/`
-2. Add 2 files:
+2. Add 2 files: 
 
 **game.json:**
 ```json
