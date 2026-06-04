@@ -657,7 +657,97 @@ function launchConfetti() {
         container.appendChild(confetti);
     }
     setTimeout(() => { container.innerHTML = ''; }, 4000);
-}
+
+    // ===================== TRACKING INTEGRATION =====================
+// This hooks into existing game functions to send data to parent window
+
+(function() {
+  // Hook into quiz answer selection
+  const originalSelectQuizAnswer = window.selectQuizAnswer;
+  window.selectQuizAnswer = function(index) {
+    const q = gameData.quiz.questions[gameState.currentQuestion];
+    const isCorrect = index === q.correct;
+    
+    window.parent.postMessage({
+      type: 'GAME_ANSWER',
+      data: {
+        question_id: 'quiz-' + gameState.currentQuestion,
+        question_text: q.q.substring(0, 100),
+        student_answer: q.options[index],
+        correct_answer: q.options[q.correct],
+        is_correct: isCorrect,
+        time_taken_ms: 3000
+      }
+    }, '*');
+    
+    return originalSelectQuizAnswer(index);
+  };
+
+  // Hook into scenario selection
+  const originalSelectScenario = window.selectScenario;
+  window.selectScenario = function(index) {
+    const s = gameData.scenarios.scenarios[gameState.currentQuestion];
+    const choice = s.choices[index];
+    const bestChoice = s.choices.reduce((best, c) => c.score > best.score ? c : best, s.choices[0]);
+    
+    window.parent.postMessage({
+      type: 'GAME_ANSWER',
+      data: {
+        question_id: 'scenario-' + gameState.currentQuestion,
+        question_text: s.title.substring(0, 100),
+        student_answer: choice.text.substring(0, 100),
+        correct_answer: bestChoice.text.substring(0, 100),
+        is_correct: choice.score >= 8,
+        time_taken_ms: 5000
+      }
+    }, '*');
+    
+    return originalSelectScenario(index);
+  };
+
+  // Hook into speed answer selection
+  const originalSelectSpeedAnswer = window.selectSpeedAnswer;
+  window.selectSpeedAnswer = function(index) {
+    const q = gameData.speed.questions[gameState.currentQuestion];
+    const timeTaken = (15 - gameState.timeLeft) * 1000;
+    
+    window.parent.postMessage({
+      type: 'GAME_ANSWER',
+      data: {
+        question_id: 'speed-' + gameState.currentQuestion,
+        question_text: q.text.substring(0, 100),
+        student_answer: index >= 0 ? q.options[index] : 'No answer',
+        correct_answer: q.bias,
+        is_correct: index >= 0 && q.options[index] === q.bias,
+        time_taken_ms: timeTaken
+      }
+    }, '*');
+    
+    return originalSelectSpeedAnswer(index);
+  };
+
+  // Hook into finishGame
+  const originalFinishGame = window.finishGame;
+  window.finishGame = function() {
+    // Calculate accuracy
+    const totalQuestions = gameState.currentQuestion + 1;
+    const maxScore = totalQuestions * 100;
+    const accuracy = maxScore > 0 ? Math.round((gameState.currentScore / maxScore) * 100) : 0;
+    
+    window.parent.postMessage({
+      type: 'GAME_COMPLETE',
+      data: {
+        score: gameState.currentScore,
+        accuracy_percent: Math.min(100, accuracy),
+        time_spent_seconds: 0
+      }
+    }, '*');
+    
+    return originalFinishGame();
+  };
+
+  console.log('✅ Tracking hooks installed');
+})();}
 </script>
 </body>
 </html>
