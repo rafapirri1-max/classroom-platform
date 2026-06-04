@@ -14,6 +14,8 @@ export default function ClassDetail() {
   const [sessions, setSessions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'students' | 'sessions' | 'analytics'>('students')
+  const [editingName, setEditingName] = useState(false)
+  const [newClassName, setNewClassName] = useState('')
 
   useEffect(() => { loadClassData() }, [classId])
 
@@ -31,6 +33,7 @@ export default function ClassDetail() {
     if (!cls) { router.push('/teacher'); return }
 
     setClassData(cls)
+    setNewClassName(cls.class_name)
 
     const { data: enrollments } = await supabase
       .from('class_enrollments')
@@ -47,6 +50,37 @@ export default function ClassDetail() {
 
     setSessions(sess || [])
     setLoading(false)
+  }
+
+  async function updateClassName() {
+    if (!newClassName.trim()) return
+    const { error } = await supabase
+      .from('classes')
+      .update({ class_name: newClassName.trim() })
+      .eq('id', classId)
+
+    if (error) {
+      alert('Error updating class: ' + error.message)
+      return
+    }
+
+    setClassData({ ...classData, class_name: newClassName.trim() })
+    setEditingName(false)
+  }
+
+  async function removeStudent(enrollmentId: string) {
+    if (!confirm('Remove this student from the class?')) return
+    const { error } = await supabase
+      .from('class_enrollments')
+      .delete()
+      .eq('id', enrollmentId)
+
+    if (error) {
+      alert('Error removing student: ' + error.message)
+      return
+    }
+
+    loadClassData()
   }
 
   const copyCode = () => {
@@ -77,8 +111,30 @@ export default function ClassDetail() {
               Classes
             </button>
             <span className="text-gray-600">|</span>
-            <h1 className="text-xl font-bold">{classData?.class_name}</h1>
+            
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                  className="bg-gray-700 text-white rounded px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={(e) => e.key === 'Enter' && updateClassName()}
+                  autoFocus
+                />
+                <button onClick={updateClassName} className="text-green-400 hover:text-green-300 text-sm">✓</button>
+                <button onClick={() => { setEditingName(false); setNewClassName(classData?.class_name || '') }} className="text-red-400 hover:text-red-300 text-sm">✕</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold">{classData?.class_name}</h1>
+                <button onClick={() => setEditingName(true)} className="text-gray-500 hover:text-white text-sm">
+                  ✏️
+                </button>
+              </div>
+            )}
           </div>
+          
           <button onClick={copyCode}
             className="bg-blue-900/50 hover:bg-blue-900 text-blue-300 px-3 py-1 rounded border border-blue-700 transition text-sm">
             Copy Code: {classData?.class_code}
@@ -120,6 +176,7 @@ export default function ClassDetail() {
                       <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Name</th>
                       <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Email</th>
                       <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Joined</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-400">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
@@ -128,6 +185,14 @@ export default function ClassDetail() {
                         <td className="px-4 py-3">{s.students?.name || 'Unknown'}</td>
                         <td className="px-4 py-3 text-gray-400 text-sm">{s.students?.email || '—'}</td>
                         <td className="px-4 py-3 text-gray-400 text-sm">{new Date(s.enrolled_at).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => removeStudent(s.id)}
+                            className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded hover:bg-red-900/30 transition"
+                          >
+                            Remove
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
