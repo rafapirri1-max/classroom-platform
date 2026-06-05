@@ -13,10 +13,11 @@ export default function StudentPage() {
   const [room, setRoom] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<any>(null)
-  
-  // Use refs for tracking so message handler always has current values
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [gameSubmitted, setGameSubmitted] = useState(false)
+  const [submissionStatus, setSubmissionStatus] = useState('')
+
   const sessionIdRef = useRef<string | null>(null)
-  const gameStartTimeRef = useRef<number>(0)
   const profileRef = useRef<any>(null)
 
   const loadRoom = useCallback(async () => {
@@ -28,7 +29,6 @@ export default function StudentPage() {
     loadRoom()
     setLoading(false)
 
-    // Load user profile for tracking
     getUserProfile().then(prof => {
       setProfile(prof)
       profileRef.current = prof
@@ -37,16 +37,15 @@ export default function StudentPage() {
     const channel = supabase.channel(`student-room-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, async (payload) => {
         setRoom(payload.new)
-        
-        // Start tracking when game launches
+
+        // Start tracking session when game launches
         if (payload.new.current_activity !== 'waiting' && 
             payload.new.current_activity !== 'poll' && 
             payload.new.current_activity !== 'wordcloud' &&
             payload.new.current_activity !== payload.old?.current_activity) {
-          
+
           const prof = profileRef.current
           if (prof?.id) {
-            console.log('Starting tracking session...')
             const res = await fetch('/api/track', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -61,11 +60,9 @@ export default function StudentPage() {
               })
             })
             const data = await res.json()
-            console.log('Start session response:', data)
             if (data.session_id) {
               sessionIdRef.current = data.session_id
-              gameStartTimeRef.current = Date.now()
-              console.log('Session started:', data.session_id)
+              setSessionId(data.session_id)
             }
           }
         }
@@ -75,59 +72,79 @@ export default function StudentPage() {
     return () => { channel.unsubscribe() }
   }, [roomId, loadRoom])
 
-  // Listen for messages from the game iframe
+  // Listen for game submission messages
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      const currentSessionId = sessionIdRef.current
-      
-      if (!currentSessionId) {
-        console.log('No session ID yet, ignoring message:', event.data)
-        return
-      }
+      if (event.data.type === 'GAME_SUBMIT') {
+        console.log('Received game submission:', event.data.data)
+        setSubmissionStatus('Submitting...')
 
-      if (event.data.type === 'GAME_ANSWER') {
-        console.log('Recording answer:', event.data.data)
-        const res = await fetch('/api/track', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'record_answer',
-            data: {
-              session_id: currentSessionId,
-              ...event.data.data
-            }
-          })
-        })
-        const result = await res.json()
-        console.log('Record answer response:', result)
-      }
+        const currentSessionId = sessionIdRef.current
+        const prof = profileRef.current
 
-      if (event.data.type === 'GAME_COMPLETE') {
-        console.log('Game complete:', event.data.data)
-        const timeSeconds = Math.round((Date.now() - gameStartTimeRef.current) / 1000)
-        const res = await fetch('/api/track', {
+        if (!currentSessionId || !prof?.id) {
+          setSubmissionStatus('Error: No active session')
+          return
+        }
+
+        // Save final session data
+        const sessionRes = await fetch('/api/track', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'end_session',
             data: {
               session_id: currentSessionId,
-              student_id: profileRef.current?.id,
+              student_id: prof.id,
               score: event.data.data.score,
               accuracy_percent: event.data.data.accuracy_percent,
-              time_spent_seconds: timeSeconds,
+              time_spent_seconds: event.data.data.time_spent_seconds,
               completed: true
             }
           })
         })
-        const result = await res.json()
-        console.log('End session response:', result)
+
+        const sessionResult = await sessionRes.json()
+        console.log('Session saved:', sessionResult)
+
+        // Save quiz answers
+        for (const answer of event.data.data.quiz_answers) {
+          await fetch('/api/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'record_answer',
+              data: {
+                session_id: currentSessionId,
+                ...answer
+              }
+            })
+          })
+        }
+
+        // Save scenario answers
+        for (const answer of event.data.data.scenario_answers) {
+          await fetch('/api/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'record_answer',
+              data: {
+                session_id: currentSessionId,
+                ...answer
+              }
+            })
+          })
+        }
+
+        setGameSubmitted(true)
+        setSubmissionStatus('✅ Answers submitted to teacher!')
       }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, []) // Empty dependency array — runs once on mount
+  }, [])
 
   if (loading) {
     return (
@@ -158,6 +175,12 @@ export default function StudentPage() {
         <div className="text-white font-semibold">👤 {name}</div>
         <div className="text-accent font-bold tracking-widest">{room.code}</div>
       </div>
+
+      {gameSubmitted && (
+        <div className="bg-green-500/20 border border-green-500/50 text-green-300 px-4 py-2 text-center">
+          {submissionStatus}
+        </div>
+      )}
 
       <div className="p-4">
         {activity === 'waiting' && (
