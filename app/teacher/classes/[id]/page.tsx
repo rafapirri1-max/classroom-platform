@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
+import ClassAnalytics from './analytics'
 
 export default function ClassDetail() {
   const params = useParams()
@@ -111,7 +112,7 @@ export default function ClassDetail() {
               Classes
             </button>
             <span className="text-gray-600">|</span>
-            
+
             {editingName ? (
               <div className="flex items-center gap-2">
                 <input
@@ -134,7 +135,7 @@ export default function ClassDetail() {
               </div>
             )}
           </div>
-          
+
           <button onClick={copyCode}
             className="bg-blue-900/50 hover:bg-blue-900 text-blue-300 px-3 py-1 rounded border border-blue-700 transition text-sm">
             Copy Code: {classData?.class_code}
@@ -209,6 +210,7 @@ export default function ClassDetail() {
               <div className="bg-gray-800 rounded-xl p-8 text-center">
                 <div className="text-5xl mb-4">🎮</div>
                 <p className="text-gray-400">No sessions yet.</p>
+                <p className="text-sm text-gray-500 mt-2">Students will appear here after playing games.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -235,11 +237,7 @@ export default function ClassDetail() {
         )}
 
         {activeTab === 'analytics' && (
-          <div className="text-center py-12">
-            <div className="text-5xl mb-4">📊</div>
-            <h3 className="text-lg font-medium text-gray-300 mb-2">Analytics Coming Soon</h3>
-            <p className="text-gray-500 max-w-md mx-auto">Detailed analytics will be available in the Pro tier.</p>
-          </div>
+          <ClassAnalytics classId={classId} classCode={classData?.class_code || ''} />
         )}
       </main>
     </div>
