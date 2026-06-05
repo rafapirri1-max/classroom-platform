@@ -35,7 +35,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Plugin-Based Architecture
 
-Games live in `public/games/` because the student room loads them as static files at `/games/{id}/index.html`. The teacher dashboard discovers games by reading each folder's `game.json`.
+Games live in `public/games/` because the student room loads them as static files at `/games/{id}/index.html`. The platform discovers them via the **activity registry** (Engine v1), which maps each folder's `game.json` to an `ActivityDefinition`.
+
+- **Canonical API:** `GET /api/activities` — full activity definitions (`id`, `type`, `version`, runtime, analytics).
+- **Legacy API:** `GET /api/games` — same launch cards as before (`{ games: [...] }`).
+
+See `docs/milestones/engine-v1-activity-identity.md` for long-term `activity_id` / `activity_type` / `activity_version` strategy.
 
 ### Adding a New Game
 
@@ -96,7 +101,8 @@ public/
 app/
 ├── teacher/room/[id]/         ← Auto-discovers games, never touch
 ├── student/[roomId]/          ← Loads any game by ID, never touch
-├── api/games/                 ← Returns list of all games
+├── api/activities/            ← Activity registry (Engine v1)
+├── api/games/                 ← Legacy list (backward compatible)
 └── api/track/                 ← Universal tracking for all games
 ```
 

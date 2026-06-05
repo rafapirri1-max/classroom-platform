@@ -2,16 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { activityToLaunchCard } from '@/lib/activity-engine/adapters/game-json'
+import type { ActivityLaunchCard } from '@/lib/activity-engine/types'
 import { supabase } from '@/lib/supabase'
 import QRCode from 'qrcode'
-
-interface GameConfig {
-  id: string
-  name: string
-  icon: string
-  description: string
-  difficulty: string
-}
 
 export default function TeacherRoomPage() {
   const params = useParams()
@@ -20,7 +14,7 @@ export default function TeacherRoomPage() {
 
   const [room, setRoom] = useState<any>(null)
   const [participants, setParticipants] = useState<any[]>([])
-  const [games, setGames] = useState<GameConfig[]>([])
+  const [games, setGames] = useState<ActivityLaunchCard[]>([])
   const [qrUrl, setQrUrl] = useState('')
   const [className, setClassName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,16 +48,18 @@ export default function TeacherRoomPage() {
     if (data) setParticipants(data)
   }, [roomId])
 
-  const loadGames = useCallback(async () => {
-    const res = await fetch('/api/games')
+  const loadActivities = useCallback(async () => {
+    const res = await fetch('/api/activities')
     const data = await res.json()
-    if (data.games) setGames(data.games)
+    if (data.activities) {
+      setGames(data.activities.map(activityToLaunchCard))
+    }
   }, [])
 
   useEffect(() => {
     loadRoom()
     loadParticipants()
-    loadGames()
+    loadActivities()
     setLoading(false)
 
     const roomChannel = supabase.channel(`room-${roomId}`)
@@ -78,7 +74,7 @@ export default function TeacherRoomPage() {
       roomChannel.unsubscribe()
       participantChannel.unsubscribe()
     }
-  }, [roomId, loadRoom, loadParticipants, loadGames])
+  }, [roomId, loadRoom, loadParticipants, loadActivities])
 
   async function launchActivity(gameId: string) {
     // Briefly set waiting so re-launching the same game still triggers a new attempt

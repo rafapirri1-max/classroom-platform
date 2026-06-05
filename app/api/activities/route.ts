@@ -1,14 +1,10 @@
-import { getAllGames } from '@/lib/game-registry'
+import { getAllActivities } from '@/lib/activity-engine'
 import { NextResponse } from 'next/server'
 
-/**
- * Legacy game list API. Prefer GET /api/activities.
- * Response shape unchanged for backward compatibility.
- */
 export async function GET() {
   try {
-    const games = await getAllGames()
-    return NextResponse.json({ games })
+    const activities = await getAllActivities()
+    return NextResponse.json({ activities })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
