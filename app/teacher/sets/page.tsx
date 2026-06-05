@@ -292,6 +292,12 @@ function SetsContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-6xl mx-auto">
+        <button
+          onClick={() => router.push("/teacher")}
+          className="text-slate-400 hover:text-white text-sm mb-4 flex items-center gap-1 transition"
+        >
+          ← Dashboard
+        </button>
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-1">My Sets</h1>

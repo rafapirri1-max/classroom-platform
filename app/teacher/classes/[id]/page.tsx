@@ -43,10 +43,12 @@ export default function ClassDetail() {
 
     setStudents(enrollments || [])
 
+    const classStudentIds = enrollments?.map(e => e.students?.id).filter(Boolean) || []
     const { data: sess } = await supabase
       .from('game_sessions')
       .select('*')
-      .eq('room_code', cls.class_code)
+      .in('student_id', classStudentIds.length > 0 ? classStudentIds : ['no-students'])
+      .neq('game_type', 'join')
       .order('created_at', { ascending: false })
 
     setSessions(sess || [])

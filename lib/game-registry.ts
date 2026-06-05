@@ -15,7 +15,7 @@ export interface GameConfig {
 
 export async function getAllGames(): Promise<GameConfig[]> {
   try {
-    const gamesDir = join(process.cwd(), 'app', 'games')
+    const gamesDir = join(process.cwd(), 'public', 'games')
     const entries = await fs.readdir(gamesDir, { withFileTypes: true })
     const games: GameConfig[] = []
 

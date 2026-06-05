@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import QRCode from 'qrcode'
 
@@ -15,6 +15,7 @@ interface GameConfig {
 
 export default function TeacherRoomPage() {
   const params = useParams()
+  const router = useRouter()
   const roomId = params.id as string
 
   const [room, setRoom] = useState<any>(null)
@@ -67,6 +68,10 @@ export default function TeacherRoomPage() {
   }, [roomId, loadRoom, loadParticipants, loadGames])
 
   async function launchActivity(gameId: string) {
+    // Briefly set waiting so re-launching the same game still triggers a new attempt
+    if (room?.current_activity === gameId && gameId !== 'waiting') {
+      await supabase.from('rooms').update({ current_activity: 'waiting' }).eq('id', roomId)
+    }
     await supabase.from('rooms').update({ current_activity: gameId }).eq('id', roomId)
   }
 
@@ -105,6 +110,12 @@ export default function TeacherRoomPage() {
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-6xl mx-auto">
+        <button
+          onClick={() => router.push('/teacher')}
+          className="text-indigo-300 hover:text-white text-sm mb-4 flex items-center gap-1 transition"
+        >
+          ← Dashboard
+        </button>
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-3 mb-1">

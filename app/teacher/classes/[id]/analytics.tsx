@@ -21,7 +21,16 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
     loadAnalytics()
   }, [classId])
 
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadAnalytics()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [classId])
+
   async function loadAnalytics() {
+    setLoading(true)
     // Get students enrolled in THIS class
     const { data: enrollments } = await supabase
       .from('class_enrollments')
@@ -226,6 +235,13 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
           <p className="text-sm text-gray-400">Class Code: {classCode}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => loadAnalytics()}
+            disabled={loading}
+            className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition"
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
           <select 
             value={dateFilter} 
             onChange={(e) => setDateFilter(e.target.value as any)}

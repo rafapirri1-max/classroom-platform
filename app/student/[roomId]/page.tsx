@@ -1,8 +1,22 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
+
+function isTrackableGame(activity: string | null | undefined): boolean {
+  return !!activity && activity !== 'waiting' && activity !== 'poll' && activity !== 'wordcloud'
+}
+
+async function callTrack(action: string, data: Record<string, unknown>) {
+  const res = await fetch('/api/track', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, data }),
+  })
+  const json = await res.json()
+  return { ok: res.ok && !json.error, json }
+}
 
 function StudentContent() {
   const params = useParams()
@@ -14,115 +28,193 @@ function StudentContent() {
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<any>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [gameSubmitted, setGameSubmitted] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState('')
+  const [submissionOk, setSubmissionOk] = useState(false)
+  const [gameAttemptKey, setGameAttemptKey] = useState(0)
+  const [enrolledInClass, setEnrolledInClass] = useState<boolean | null>(null)
+
+  const profileRef = useRef<any>(null)
+  const sessionIdRef = useRef<string | null>(null)
+  const gameAttemptKeyRef = useRef(0)
+  const sessionForAttemptRef = useRef<number | null>(null)
+  const beganAttemptForActivityRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    profileRef.current = profile
+  }, [profile])
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId
+  }, [sessionId])
 
   const loadRoom = useCallback(async () => {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
     if (data) setRoom(data)
+    return data
   }, [roomId])
 
-  useEffect(() => {
-    loadRoom()
-    setLoading(false)
+  const startSessionForActivity = useCallback(async (activity: string, roomCode: string) => {
+    const studentId = profileRef.current?.id
+    if (!studentId || !isTrackableGame(activity)) return null
 
-    getUserProfile().then(prof => {
+    const { ok, json } = await callTrack('start_session', {
+      student_id: studentId,
+      game_type: activity,
+      mode: 'room',
+      room_code: roomCode,
+    })
+
+    if (ok && json.session_id) {
+      setSessionId(json.session_id)
+      sessionIdRef.current = json.session_id
+      sessionForAttemptRef.current = gameAttemptKeyRef.current
+      return json.session_id as string
+    }
+    return null
+  }, [])
+
+  const resetSubmissionState = useCallback(() => {
+    setSubmissionStatus('')
+    setSubmissionOk(false)
+  }, [])
+
+  const beginNewGameAttempt = useCallback(async (roomData: any) => {
+    const activity = roomData?.current_activity
+    if (!isTrackableGame(activity) || !profileRef.current?.id) return
+
+    gameAttemptKeyRef.current += 1
+    setGameAttemptKey(gameAttemptKeyRef.current)
+    resetSubmissionState()
+    setSessionId(null)
+    sessionIdRef.current = null
+    sessionForAttemptRef.current = null
+    beganAttemptForActivityRef.current = activity
+
+    await startSessionForActivity(activity, roomData.code)
+  }, [resetSubmissionState, startSessionForActivity])
+
+  const ensureSessionForCurrentAttempt = useCallback(async (roomData: any) => {
+    const activity = roomData?.current_activity
+    if (!isTrackableGame(activity) || !profileRef.current?.id) return null
+    if (
+      sessionForAttemptRef.current === gameAttemptKeyRef.current &&
+      sessionIdRef.current
+    ) {
+      return sessionIdRef.current
+    }
+    return startSessionForActivity(activity, roomData.code)
+  }, [startSessionForActivity])
+
+  useEffect(() => {
+    loadRoom().then(() => setLoading(false))
+    getUserProfile().then(async prof => {
       setProfile(prof)
+      if (!prof?.id) {
+        setEnrolledInClass(null)
+        return
+      }
+      const { count } = await supabase
+        .from('class_enrollments')
+        .select('*', { count: 'exact', head: true })
+        .eq('student_id', prof.id)
+      setEnrolledInClass((count ?? 0) > 0)
     })
 
     const channel = supabase.channel(`student-room-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, async (payload) => {
         setRoom(payload.new)
 
-        if (payload.new.current_activity !== 'waiting' && 
-            payload.new.current_activity !== 'poll' && 
-            payload.new.current_activity !== 'wordcloud' &&
-            payload.new.current_activity !== payload.old?.current_activity) {
+        const activity = payload.new.current_activity
+        const prevActivity = payload.old?.current_activity
 
-          if (profile?.id) {
-            const res = await fetch('/api/track', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'start_session',
-                data: {
-                  student_id: profile.id,
-                  game_type: payload.new.current_activity,
-                  mode: 'room',
-                  room_code: payload.new.code
-                }
-              })
-            })
-            const data = await res.json()
-            if (data.session_id) {
-              setSessionId(data.session_id)
-            }
-          }
+        if (activity === 'waiting' && isTrackableGame(prevActivity)) {
+          resetSubmissionState()
+          beganAttemptForActivityRef.current = null
+        }
+
+        if (isTrackableGame(activity) && activity !== prevActivity) {
+          await beginNewGameAttempt(payload.new)
         }
       })
       .subscribe()
 
     return () => { channel.unsubscribe() }
-  }, [roomId, loadRoom])
+  }, [roomId, loadRoom, beginNewGameAttempt, resetSubmissionState])
+
+  // Start a new attempt when joining a room that already has an active game
+  useEffect(() => {
+    if (!room || !profile?.id) return
+    const activity = room.current_activity
+    if (!isTrackableGame(activity)) return
+    if (beganAttemptForActivityRef.current === activity && sessionIdRef.current) return
+    beginNewGameAttempt(room)
+  }, [room, profile, beginNewGameAttempt])
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      if (event.data.type === 'GAME_SUBMIT') {
-        setSubmissionStatus('Submitting...')
+      if (event.data?.type !== 'GAME_SUBMIT') return
 
-        if (!sessionId || !profile?.id) {
-          setSubmissionStatus('Error: No active session')
+      setSubmissionStatus('Submitting...')
+      setSubmissionOk(false)
+
+      let activeSessionId = sessionIdRef.current
+      const studentId = profileRef.current?.id
+
+      if (!studentId) {
+        setSubmissionStatus('Error: Sign in to submit answers to your teacher.')
+        return
+      }
+
+      if (!activeSessionId && room) {
+        activeSessionId = await ensureSessionForCurrentAttempt(room)
+      }
+
+      if (!activeSessionId) {
+        setSubmissionStatus('Error: No active session. Ask your teacher to launch the game again.')
+        return
+      }
+
+      const payload = event.data.data || {}
+      const quizAnswers = payload.quiz_answers || []
+      const scenarioAnswers = payload.scenario_answers || []
+
+      for (const answer of quizAnswers) {
+        const { ok, json } = await callTrack('record_answer', { session_id: activeSessionId, ...answer })
+        if (!ok) {
+          setSubmissionStatus(`Error saving answers: ${json.error || 'Unknown error'}`)
           return
         }
-
-        const sessionRes = await fetch('/api/track', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'end_session',
-            data: {
-              session_id: sessionId,
-              student_id: profile.id,
-              score: event.data.data.score,
-              accuracy_percent: event.data.data.accuracy_percent,
-              time_spent_seconds: event.data.data.time_spent_seconds,
-              completed: true
-            }
-          })
-        })
-
-        const sessionResult = await sessionRes.json()
-
-        for (const answer of event.data.data.quiz_answers) {
-          await fetch('/api/track', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'record_answer',
-              data: { session_id: sessionId, ...answer }
-            })
-          })
-        }
-
-        for (const answer of event.data.data.scenario_answers) {
-          await fetch('/api/track', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'record_answer',
-              data: { session_id: sessionId, ...answer }
-            })
-          })
-        }
-
-        setGameSubmitted(true)
-        setSubmissionStatus('✅ Answers submitted to teacher!')
       }
+
+      for (const answer of scenarioAnswers) {
+        const { ok, json } = await callTrack('record_answer', { session_id: activeSessionId, ...answer })
+        if (!ok) {
+          setSubmissionStatus(`Error saving answers: ${json.error || 'Unknown error'}`)
+          return
+        }
+      }
+
+      const { ok, json } = await callTrack('end_session', {
+        session_id: activeSessionId,
+        student_id: studentId,
+        score: payload.score,
+        accuracy_percent: payload.accuracy_percent,
+        time_spent_seconds: payload.time_spent_seconds,
+        completed: true,
+      })
+
+      if (!ok) {
+        setSubmissionStatus(`Error submitting results: ${json.error || 'Unknown error'}`)
+        return
+      }
+
+      setSubmissionOk(true)
+      setSubmissionStatus('Answers submitted to teacher!')
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sessionId, profile])
+  }, [room, ensureSessionForCurrentAttempt])
 
   if (loading) {
     return (
@@ -154,8 +246,19 @@ function StudentContent() {
         <div className="text-accent font-bold tracking-widest">{room.code}</div>
       </div>
 
-      {gameSubmitted && (
-        <div className="bg-green-500/20 border border-green-500/50 text-green-300 px-4 py-2 text-center">
+      {profile && enrolledInClass === false && (
+        <div className="bg-amber-500/20 border-b border-amber-500/50 text-amber-100 px-4 py-2 text-center text-sm">
+          You are signed in but not enrolled in a class. Your teacher may not see your results in class analytics until you join using their class code on the{' '}
+          <a href="/" className="underline font-medium text-amber-200 hover:text-white">student home page</a>.
+        </div>
+      )}
+
+      {submissionStatus && (
+        <div className={`px-4 py-2 text-center border ${
+          submissionOk
+            ? 'bg-green-500/20 border-green-500/50 text-green-300'
+            : 'bg-red-500/20 border-red-500/50 text-red-300'
+        }`}>
           {submissionStatus}
         </div>
       )}
@@ -173,9 +276,10 @@ function StudentContent() {
 
         {isGame && (
           <div className="h-[calc(100vh-60px)]">
-            <iframe 
-              src={`/games/${activity}/index.html`} 
-              className="w-full h-full border-0 rounded-xl" 
+            <iframe
+              key={`${activity}-${gameAttemptKey}`}
+              src={`/games/${activity}/index.html`}
+              className="w-full h-full border-0 rounded-xl"
               title="Game"
             />
           </div>

@@ -24,7 +24,7 @@ function HomeContent() {
     const { data: { session } } = await supabase.auth.getSession()
     setUser(session?.user || null)
     if (session?.user) {
-      const prof = await getUserProfile()
+      const prof = await getUserProfile({ ensureIfMissing: true, role: 'student' })
       setProfile(prof)
       const { data: enrollments } = await supabase
         .from('class_enrollments')
@@ -62,21 +62,21 @@ function HomeContent() {
       })
     }
 
-    if (user && profile) {
-      await supabase.from('game_sessions').insert({
-        student_id: profile.id,
-        game_type: 'join',
-        mode: 'room',
-        room_code: roomCode.toUpperCase(),
-        score: 0,
-        completed: false
-      })
-    }
     router.push(`/student/${room.id}?name=${encodeURIComponent(name)}`)
   }
 
   const handleJoinClass = async () => {
-    if (!classCode.trim() || !user || !profile) { alert('Please sign in first.'); return }
+    if (!classCode.trim()) return
+    if (!user) {
+      alert('Please sign in to join a class.')
+      return
+    }
+    if (!profile) {
+      alert(
+        'Your student profile is not set up yet. Sign out, sign in again, or refresh the page. If this continues, your account may need to be linked in the database.'
+      )
+      return
+    }
     const { data: cls } = await supabase
       .from('classes')
       .select('*')

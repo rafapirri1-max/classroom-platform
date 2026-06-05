@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, getUserProfile, ensureStudentProfile } from '@/lib/supabase'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -30,22 +30,43 @@ export default function LoginPage() {
         options: { data: { full_name: name } }
       })
       if (signUpError) { setError(signUpError.message); return }
-      if (data.user) {
-        await supabase.from('students').insert({
-          auth_id: data.user.id,
-          email: data.user.email,
-          name: name || email.split('@')[0],
-          role: isTeacher ? 'teacher' : 'student'
-        })
-        router.push(isTeacher ? '/teacher' : '/')
+      if (!data.user) {
+        setError('Sign up did not return a user. Check your email for a confirmation link, then sign in.')
+        return
       }
+
+      const { profile, error: profileError } = await ensureStudentProfile({
+        authId: data.user.id,
+        email: data.user.email ?? email,
+        name: name || email.split('@')[0],
+        role: isTeacher ? 'teacher' : 'student',
+      })
+
+      if (profileError || !profile) {
+        setError(
+          profileError
+            ? `Account created but profile setup failed: ${profileError}`
+            : 'Account created but profile setup failed. Please sign in to try again.'
+        )
+        return
+      }
+
+      router.push(profile.role === 'teacher' ? '/teacher' : '/')
     } else {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) { setError(signInError.message); return }
-      if (data.user) {
-        const { data: profile } = await supabase.from('students').select('role').eq('auth_id', data.user.id).single()
-        router.push(profile?.role === 'teacher' ? '/teacher' : '/')
+      if (!data.user) {
+        setError('Sign in failed. Please try again.')
+        return
       }
+
+      const profile = await getUserProfile({ ensureIfMissing: true, role: 'student' })
+      if (!profile) {
+        setError('Signed in but your profile could not be loaded. Please try again or contact support.')
+        return
+      }
+
+      router.push(profile.role === 'teacher' ? '/teacher' : '/')
     }
   }
 

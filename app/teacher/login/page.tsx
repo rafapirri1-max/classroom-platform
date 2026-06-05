@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, ensureStudentProfile, getUserProfile } from '@/lib/supabase'
 
 export default function TeacherLoginPage() {
   const [email, setEmail] = useState('')
@@ -16,14 +16,14 @@ export default function TeacherLoginPage() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        checkRoleAndRedirect(session.user.id)
+        checkRoleAndRedirect()
       }
     })
   }, [router])
 
-  async function checkRoleAndRedirect(userId: string) {
-    const { data } = await supabase.from('students').select('role').eq('auth_id', userId).single()
-    if (data?.role === 'teacher') {
+  async function checkRoleAndRedirect() {
+    const profile = await getUserProfile({ ensureIfMissing: true, role: 'teacher' })
+    if (profile?.role === 'teacher') {
       router.push('/teacher')
     }
   }
@@ -52,24 +52,23 @@ export default function TeacherLoginPage() {
         return
       }
 
-      const { data: insertData, error: insertError } = await supabase
-        .from('students')
-        .insert({
-          auth_id: data.user.id,
-          email: data.user.email,
-          name: name || email.split('@')[0],
-          role: 'teacher'
-        })
-        .select()
+      const { profile, error: profileError } = await ensureStudentProfile({
+        authId: data.user.id,
+        email: data.user.email ?? email,
+        name: name || email.split('@')[0],
+        role: 'teacher',
+      })
 
-      if (insertError) {
-        console.error('INSERT FAILED:', insertError)
-        setError('Profile creation failed: ' + insertError.message + ' (Code: ' + insertError.code + ')')
+      if (profileError || !profile) {
+        setError(
+          profileError
+            ? `Account created but profile setup failed: ${profileError}`
+            : 'Account created but profile setup failed. Please sign in to try again.'
+        )
         setLoading(false)
         return
       }
 
-      console.log('INSERT SUCCESS:', insertData)
       setLoading(false)
       router.push('/teacher')
       
@@ -88,21 +87,16 @@ export default function TeacherLoginPage() {
         return
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from('students')
-        .select('role')
-        .eq('auth_id', data.user.id)
-        .single()
+      const profile = await getUserProfile({ ensureIfMissing: true, role: 'teacher' })
 
-      if (profileError) {
-        console.error('PROFILE LOOKUP ERROR:', profileError)
-        setError('Profile lookup failed: ' + profileError.message)
+      if (!profile) {
+        setError('Signed in but your teacher profile could not be loaded. Please try again.')
         setLoading(false)
         await supabase.auth.signOut()
         return
       }
 
-      if (profile?.role === 'teacher') {
+      if (profile.role === 'teacher') {
         setLoading(false)
         router.push('/teacher')
       } else {
