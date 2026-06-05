@@ -9,6 +9,7 @@ export default function TeacherDashboard() {
   const [profile, setProfile] = useState<any>(null)
   const [classes, setClasses] = useState<any[]>([])
   const [rooms, setRooms] = useState<any[]>([])
+  const [showClosed, setShowClosed] = useState(false)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -36,7 +37,6 @@ export default function TeacherDashboard() {
       .from('rooms')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(10)
 
     setRooms(roomData || [])
     setLoading(false)
@@ -60,10 +60,33 @@ export default function TeacherDashboard() {
     }
   }
 
+  async function reopenRoom(roomId: string) {
+    const { error } = await supabase
+      .from('rooms')
+      .update({ status: 'active' })
+      .eq('id', roomId)
+
+    if (error) {
+      alert('Error reopening room: ' + error.message)
+      return
+    }
+
+    // Refresh rooms
+    const { data } = await supabase
+      .from('rooms')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    setRooms(data || [])
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
+
+  const activeRooms = rooms.filter(r => r.status === 'active')
+  const closedRooms = rooms.filter(r => r.status === 'closed')
 
   if (loading) {
     return (
@@ -111,7 +134,7 @@ export default function TeacherDashboard() {
             <div className="text-gray-400 text-sm mt-1">Total Students</div>
           </div>
           <div className="bg-gray-800 rounded-xl p-6">
-            <div className="text-3xl font-bold text-purple-400">{rooms.length}</div>
+            <div className="text-3xl font-bold text-purple-400">{activeRooms.length}</div>
             <div className="text-gray-400 text-sm mt-1">Active Rooms</div>
           </div>
         </div>
@@ -169,10 +192,10 @@ export default function TeacherDashboard() {
           )}
         </div>
 
-        {/* Rooms Section */}
-        <div className="bg-gray-800 rounded-xl p-6">
+        {/* Active Rooms Section */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold">🎮 Live Rooms</h2>
+            <h2 className="text-xl font-semibold">🎮 Active Rooms</h2>
             <button
               onClick={createRoom}
               className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
@@ -183,10 +206,10 @@ export default function TeacherDashboard() {
             </button>
           </div>
 
-          {rooms.length === 0 ? (
+          {activeRooms.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🎮</div>
-              <h3 className="text-lg font-medium text-gray-300 mb-2">No rooms yet</h3>
+              <h3 className="text-lg font-medium text-gray-300 mb-2">No active rooms</h3>
               <p className="text-gray-500 mb-4">Create a room to launch games with students.</p>
               <button onClick={createRoom}
                 className="inline-block bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition">
@@ -195,7 +218,7 @@ export default function TeacherDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {rooms.map((room) => (
+              {activeRooms.map((room) => (
                 <div key={room.id}
                   onClick={() => router.push(`/teacher/room/${room.id}`)}
                   className="bg-gray-700/50 rounded-lg p-4 flex items-center justify-between hover:bg-gray-700 transition cursor-pointer">
@@ -209,10 +232,8 @@ export default function TeacherDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      room.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
-                    }`}>
-                      {room.status.toUpperCase()}
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-500/20 text-green-300">
+                      ACTIVE
                     </span>
                     <span className="text-sm text-gray-400">View →</span>
                   </div>
@@ -221,6 +242,48 @@ export default function TeacherDashboard() {
             </div>
           )}
         </div>
+
+        {/* Closed Rooms Section (collapsible) */}
+        {closedRooms.length > 0 && (
+          <div className="bg-gray-800 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-400">🚪 Closed Rooms ({closedRooms.length})</h2>
+              <button
+                onClick={() => setShowClosed(!showClosed)}
+                className="text-sm text-gray-400 hover:text-white transition">
+                {showClosed ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {showClosed && (
+              <div className="space-y-3">
+                {closedRooms.map((room) => (
+                  <div key={room.id} className="bg-gray-700/30 rounded-lg p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gray-700/50 rounded-lg flex items-center justify-center text-2xl">🎮</div>
+                      <div>
+                        <h3 className="font-semibold text-gray-400">Room {room.code}</h3>
+                        <p className="text-sm text-gray-500">
+                          Created {new Date(room.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400">
+                        CLOSED
+                      </span>
+                      <button
+                        onClick={() => reopenRoom(room.id)}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition">
+                        Re-open
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   )
