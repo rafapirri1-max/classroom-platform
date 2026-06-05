@@ -3,11 +3,6 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Play, SkipForward, RotateCcw, Trophy } from "lucide-react";
-import { toast } from "sonner";
 
 interface GameState {
   tileUsed: boolean[];
@@ -77,6 +72,7 @@ function HostContent() {
   });
   const [loading, setLoading] = useState(true);
   const [tileTypes, setTileTypes] = useState<string[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!sessionId) {
@@ -94,7 +90,7 @@ function HostContent() {
       .single();
 
     if (!session) {
-      toast.error("Session not found");
+      setError("Session not found");
       router.push("/teacher/sets");
       return;
     }
@@ -261,7 +257,7 @@ function HostContent() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
         <div className="max-w-lg mx-auto text-center pt-12">
-          <Trophy className="w-20 h-20 text-yellow-400 mx-auto mb-6" />
+          <div className="text-6xl mb-6">🏆</div>
           <h1 className="text-4xl font-bold text-white mb-4">Game Over!</h1>
           <p className="text-slate-400 mb-8 text-xl">{gameState.winnerText}</p>
 
@@ -270,7 +266,7 @@ function HostContent() {
               .map((s, i) => ({ score: s, name: gameState.teamNames[i], index: i }))
               .sort((a, b) => b.score - a.score)
               .map((item, rank) => (
-                <Card key={item.index} className={`p-4 ${
+                <div key={item.index} className={`p-4 rounded-lg border ${
                   rank === 0 ? "bg-yellow-400/10 border-yellow-400/30" : "bg-slate-800/50 border-slate-700"
                 }`}>
                   <div className="flex items-center justify-between">
@@ -284,16 +280,16 @@ function HostContent() {
                       {item.score > 0 ? "+" : ""}{item.score}
                     </span>
                   </div>
-                </Card>
+                </div>
               ))}
           </div>
 
-          <Button
+          <button
             onClick={() => router.push("/teacher/sets")}
-            className="mt-8 bg-blue-600 hover:bg-blue-700 text-white"
+            className="mt-8 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Sets
-          </Button>
+            ← Back to Sets
+          </button>
         </div>
       </div>
     );
@@ -308,20 +304,20 @@ function HostContent() {
             <p className="text-slate-400 text-sm">Room: <span className="text-yellow-400 font-mono">{roomCode}</span></p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={endGame} className="border-red-500 text-red-400 hover:bg-red-500/20">
+            <button onClick={endGame} className="border border-red-500 text-red-400 hover:bg-red-500/20 px-3 py-2 rounded">
               End Game
-            </Button>
-            <Button variant="outline" onClick={() => router.push("/teacher/sets")} className="border-slate-600 text-slate-300">
-              <ArrowLeft className="w-4 h-4 mr-1" /> Exit
-            </Button>
+            </button>
+            <button onClick={() => router.push("/teacher/sets")} className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-3 py-2 rounded">
+              ← Exit
+            </button>
           </div>
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
           {gameState.scores.map((score, i) => (
-            <Card
+            <div
               key={i}
-              className={`min-w-[130px] p-3 ${
+              className={`min-w-[130px] p-3 rounded-lg border ${
                 i === gameState.currentTeam
                   ? "border-yellow-400 shadow-lg shadow-yellow-400/20"
                   : "border-slate-700"
@@ -329,16 +325,16 @@ function HostContent() {
             >
               <div className="flex items-center gap-1 mb-1">
                 <span className="text-xs font-bold text-slate-400 truncate">{gameState.teamNames[i]}</span>
-                {i === gameState.immunityTeam && <Badge className="bg-blue-500 text-white text-xs">Shield</Badge>}
+                {i === gameState.immunityTeam && <span className="text-blue-400 text-xs">🛡</span>}
               </div>
               <div className={`text-xl font-bold ${score >= 0 ? "text-green-400" : "text-red-400"}`}>
                 {score > 0 ? "+" : ""}{score}
               </div>
-            </Card>
+            </div>
           ))}
         </div>
 
-        <Card className="bg-slate-800/30 border-slate-700 p-3 mb-4">
+        <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-3 mb-4">
           <div className="grid grid-cols-5 gap-2">
             {gameState.tileUsed.map((used, i) => {
               const type = tileTypes[i] || "normal";
@@ -366,9 +362,9 @@ function HostContent() {
               );
             })}
           </div>
-        </Card>
+        </div>
 
-        <Card className="bg-slate-800/50 border-slate-700 p-4">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
           <div className="text-yellow-400 text-xs font-bold uppercase tracking-wider mb-2">
             {gameState.categoryText || "SELECT A TILE"}
           </div>
@@ -412,22 +408,22 @@ function HostContent() {
 
           <div className="flex gap-2 mt-4">
             {gameState.roundLocked && !gameState.answerVisible && (
-              <Button onClick={revealAnswer} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <button onClick={revealAnswer} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
                 Reveal Answer
-              </Button>
+              </button>
             )}
             {gameState.roundLocked && gameState.answerVisible && !gameState.currentRoundFinished && (
-              <Button onClick={() => setGameState(prev => ({ ...prev, currentRoundFinished: true, roundLocked: false }))} className="bg-green-600 hover:bg-green-700 text-white">
-                <SkipForward className="w-4 h-4 mr-1" /> Skip Timer
-              </Button>
+              <button onClick={() => setGameState(prev => ({ ...prev, currentRoundFinished: true, roundLocked: false }))} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+                ⏭ Skip Timer
+              </button>
             )}
             {gameState.currentRoundFinished && (
-              <Button onClick={nextTurn} className="bg-purple-600 hover:bg-purple-700 text-white">
-                <RotateCcw className="w-4 h-4 mr-1" /> Next Turn
-              </Button>
+              <button onClick={nextTurn} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+                🔄 Next Turn
+              </button>
             )}
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );

@@ -3,9 +3,6 @@
 import { useState, useEffect, Suspense } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Shield, Clock, Trophy } from "lucide-react";
 
 interface GameState {
   tileUsed: boolean[];
@@ -85,7 +82,7 @@ function StudentUnfairContent() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
         <div className="max-w-lg mx-auto text-center pt-12">
-          <Trophy className="w-20 h-20 text-yellow-400 mx-auto mb-6" />
+          <div className="text-6xl mb-6">🏆</div>
           <h1 className="text-4xl font-bold text-white mb-4">{gameState.winnerText.split("\n")[0]}</h1>
           <p className="text-slate-400 mb-8">{gameState.winnerText.split("\n")[1]}</p>
 
@@ -94,7 +91,7 @@ function StudentUnfairContent() {
               .map((s, i) => ({ score: s, name: gameState.teamNames[i], index: i }))
               .sort((a, b) => b.score - a.score)
               .map((item, rank) => (
-                <Card key={item.index} className={`p-4 ${
+                <div key={item.index} className={`p-4 rounded-lg border ${
                   rank === 0 ? "bg-yellow-400/10 border-yellow-400/30" : "bg-slate-800/50 border-slate-700"
                 }`}>
                   <div className="flex items-center justify-between">
@@ -108,7 +105,7 @@ function StudentUnfairContent() {
                       {item.score > 0 ? "+" : ""}{item.score}
                     </span>
                   </div>
-                </Card>
+                </div>
               ))}
           </div>
         </div>
@@ -123,16 +120,16 @@ function StudentUnfairContent() {
           <h1 className="text-lg font-bold text-white">The Unfair Game</h1>
           <p className="text-sm text-slate-400">Room: <span className="text-yellow-400">{roomId}</span></p>
         </div>
-        <Badge variant="outline" className="text-green-400 border-green-400/30">
+        <div className="border border-green-400/30 text-green-400 px-2 py-1 rounded text-sm">
           ● Live
-        </Badge>
+        </div>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
         {gameState.scores.map((score, i) => (
-          <Card
+          <div
             key={i}
-            className={`min-w-[130px] p-3 ${
+            className={`min-w-[130px] p-3 rounded-lg border ${
               i === gameState.currentTeam
                 ? "border-yellow-400 shadow-lg shadow-yellow-400/20"
                 : "border-slate-700"
@@ -140,12 +137,12 @@ function StudentUnfairContent() {
           >
             <div className="flex items-center gap-1 mb-1">
               <span className="text-xs font-bold text-slate-400 truncate">{gameState.teamNames[i]}</span>
-              {i === gameState.immunityTeam && <Shield className="w-3 h-3 text-blue-400" />}
+              {i === gameState.immunityTeam && <span className="text-blue-400 text-xs">🛡</span>}
             </div>
             <div className={`text-xl font-bold ${score >= 0 ? "text-green-400" : "text-red-400"}`}>
               {score > 0 ? "+" : ""}{score}
             </div>
-          </Card>
+          </div>
         ))}
       </div>
 
@@ -177,7 +174,7 @@ function StudentUnfairContent() {
         </div>
       </div>
 
-      <Card className="bg-slate-800/50 border-slate-700 p-4">
+      <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
         <div className="text-yellow-400 text-xs font-bold uppercase tracking-wider mb-2">
           {gameState.categoryText}
         </div>
@@ -194,7 +191,7 @@ function StudentUnfairContent() {
               />
             </div>
             <div className="flex items-center gap-1 mt-1 text-xs text-slate-400">
-              <Clock className="w-3 h-3" /> {gameState.timeLeft}s
+              ⏱️ {gameState.timeLeft}s
             </div>
           </div>
         )}
@@ -218,7 +215,7 @@ function StudentUnfairContent() {
         <div className="bg-slate-900/50 rounded-xl p-3 text-sm text-slate-300">
           {gameState.eventBoxText}
         </div>
-      </Card>
+      </div>
 
       <div className="mt-4 text-center">
         <p className="text-slate-400 text-sm">

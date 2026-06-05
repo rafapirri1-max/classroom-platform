@@ -3,14 +3,6 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Play, Users, Dices } from "lucide-react";
-import { toast } from "sonner";
 
 interface GameSet {
   id: string;
@@ -40,6 +32,7 @@ function LaunchContent() {
   const [roomCode, setRoomCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     loadData();
@@ -77,21 +70,21 @@ function LaunchContent() {
 
   async function launchGame() {
     if (!selectedSet) {
-      toast.error("Select a question set");
+      setError("Select a question set");
       return;
     }
     if (!selectedClass) {
-      toast.error("Select a class");
+      setError("Select a class");
       return;
     }
 
     const set = sets.find(s => s.id === selectedSet);
     if (!set) {
-      toast.error("Set not found");
+      setError("Set not found");
       return;
     }
 
-    const { data: session, error } = await supabase
+    const { data: session, error: dbError } = await supabase
       .from("unfair_game_sessions")
       .insert({
         class_id: selectedClass,
@@ -104,8 +97,8 @@ function LaunchContent() {
       .select()
       .single();
 
-    if (error) {
-      toast.error("Failed to launch: " + error.message);
+    if (dbError) {
+      setError("Failed to launch: " + dbError.message);
       return;
     }
 
@@ -123,77 +116,78 @@ function LaunchContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-2xl mx-auto">
-        <Button
-          variant="ghost"
+        <button
           onClick={() => router.push("/teacher/sets")}
-          className="text-slate-400 hover:text-white mb-6"
+          className="text-slate-400 hover:text-white mb-6 flex items-center gap-2"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back to My Sets
-        </Button>
+          ← Back to My Sets
+        </button>
 
         <h1 className="text-3xl font-bold text-white mb-2">Launch Unfair Game</h1>
         <p className="text-slate-400 mb-8">Configure your game and share the room code with students</p>
 
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white">Game Setup</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        {error && (
+          <div className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded mb-4">
+            {error}
+          </div>
+        )}
+
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+          <h2 className="text-white font-semibold mb-4">Game Setup</h2>
+
+          <div className="space-y-4">
             <div>
-              <Label className="text-slate-300 mb-2 block">Question Set *</Label>
-              <Select value={selectedSet} onValueChange={setSelectedSet}>
-                <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                  <SelectValue placeholder="Choose a set..." />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  {sets.map(set => (
-                    <SelectItem key={set.id} value={set.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{set.name}</span>
-                        <Badge variant="outline" className="text-xs">{set.questions?.length || 0} Qs</Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-slate-300 text-sm mb-1 block">Question Set *</label>
+              <select
+                value={selectedSet}
+                onChange={(e) => setSelectedSet(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+              >
+                <option value="">Choose a set...</option>
+                {sets.map(set => (
+                  <option key={set.id} value={set.id}>
+                    {set.name} ({set.questions?.length || 0} Qs)
+                  </option>
+                ))}
+              </select>
               {sets.length === 0 && (
                 <p className="text-sm text-red-400 mt-2">
-                  No sets found. <Button variant="link" onClick={() => router.push("/teacher/sets")} className="text-yellow-400 p-0 h-auto">Create one first</Button>
+                  No sets found. <a href="/teacher/sets" className="text-yellow-400 underline">Create one first</a>
                 </p>
               )}
             </div>
 
             <div>
-              <Label className="text-slate-300 mb-2 block">Class *</Label>
-              <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                  <SelectValue placeholder="Choose a class..." />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  {classes.map(cls => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.class_name} ({cls.class_code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-slate-300 text-sm mb-1 block">Class *</label>
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+              >
+                <option value="">Choose a class...</option>
+                {classes.map(cls => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.class_name} ({cls.class_code})
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <Label className="text-slate-300 mb-2 block">Number of Teams</Label>
+              <label className="text-slate-300 text-sm mb-1 block">Number of Teams</label>
               <div className="flex gap-2">
                 {[2, 3, 4, 5, 6].map(n => (
-                  <Button
+                  <button
                     key={n}
-                    variant={teamCount === n ? "default" : "outline"}
                     onClick={() => setTeamCount(n)}
-                    className={teamCount === n 
-                      ? "bg-yellow-500 text-black font-bold" 
-                      : "border-slate-600 text-slate-300 hover:bg-slate-700"
-                    }
+                    className={`px-4 py-2 rounded-lg font-bold ${
+                      teamCount === n
+                        ? "bg-yellow-500 text-black"
+                        : "border border-slate-600 text-slate-300 hover:bg-slate-700"
+                    }`}
                   >
-                    <Users className="w-4 h-4 mr-1" /> {n}
-                  </Button>
+                    👥 {n}
+                  </button>
                 ))}
               </div>
             </div>
@@ -201,19 +195,19 @@ function LaunchContent() {
             <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
               <div className="flex items-center justify-between">
                 <div>
-                  <Label className="text-slate-300 text-sm">Room Code</Label>
+                  <label className="text-slate-300 text-sm">Room Code</label>
                   <div className="text-3xl font-bold text-yellow-400 tracking-wider">{roomCode}</div>
                 </div>
-                <Button
-                  variant="outline"
+                <button
                   onClick={() => {
                     navigator.clipboard.writeText(roomCode);
-                    toast.success("Room code copied!");
+                    setError("Room code copied!");
+                    setTimeout(() => setError(""), 2000);
                   }}
-                  className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                  className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-3 py-1 rounded"
                 >
                   Copy
-                </Button>
+                </button>
               </div>
               <p className="text-sm text-slate-400 mt-2">
                 Students join at <span className="text-yellow-400">/student/{roomCode}</span>
@@ -223,26 +217,24 @@ function LaunchContent() {
             {selectedSet && (
               <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600/50">
                 <div className="flex items-center gap-2 mb-2">
-                  <Dices className="w-5 h-5 text-yellow-400" />
+                  <span className="text-yellow-400">🎲</span>
                   <span className="font-bold text-white">{sets.find(s => s.id === selectedSet)?.name}</span>
                 </div>
-                <div className="flex gap-4 text-sm text-slate-400">
-                  <span>{sets.find(s => s.id === selectedSet)?.questions?.length || 0} questions</span>
-                  <span>•</span>
-                  <span>{sets.find(s => s.id === selectedSet)?.subject || "No subject"}</span>
+                <div className="text-sm text-slate-400">
+                  {sets.find(s => s.id === selectedSet)?.questions?.length || 0} questions • {sets.find(s => s.id === selectedSet)?.subject || "No subject"}
                 </div>
               </div>
             )}
 
-            <Button
+            <button
               onClick={launchGame}
               disabled={!selectedSet || !selectedClass}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-lg py-6"
+              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-lg py-4 rounded-lg"
             >
-              <Play className="w-5 h-5 mr-2" /> Launch Game
-            </Button>
-          </CardContent>
-        </Card>
+              ▶ Launch Game
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
