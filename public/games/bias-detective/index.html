@@ -138,6 +138,7 @@
         .learn-content { font-size: 1rem; line-height: 1.7; color: #334155; }
         .learn-tip { background: #fef3c7; border-left: 4px solid var(--accent); padding: 15px; border-radius: 0 12px 12px 0; margin-top: 15px; font-weight: 600; color: #92400e; }
     </style>
+<base target="_blank">
 </head>
 <body>
     <div class="app-container">
@@ -658,34 +659,113 @@ function launchConfetti() {
     }
     setTimeout(() => { container.innerHTML = ''; }, 4000);
 
-    // Make functions global for tracking hooks
+// Close launchConfetti function
+}
+
+// ===================== GLOBAL FUNCTION ASSIGNMENTS =====================
+// Make functions available on window for tracking hooks
 window.selectQuizAnswer = selectQuizAnswer;
 window.selectScenario = selectScenario;
 window.selectSpeedAnswer = selectSpeedAnswer;
 window.finishGame = finishGame;
-    
-    // ===================== TRACKING INTEGRATION =====================
-// This hooks into existing game functions to send data to parent window
 
+// ===================== DATA COLLECTION =====================
+let quizAnswers = [];
+let scenarioAnswers = [];
+let gameStartTime = Date.now();
+let hasSubmitted = false;
+
+function sendAnswerToParent(questionId, questionText, studentAnswer, correctAnswer, isCorrect, timeMs) {
+  window.parent.postMessage({
+    type: 'GAME_ANSWER',
+    data: {
+      question_id: questionId,
+      question_text: questionText,
+      student_answer: studentAnswer,
+      correct_answer: correctAnswer,
+      is_correct: isCorrect,
+      time_taken_ms: timeMs
+    }
+  }, '*');
+}
+
+function submitGameData() {
+  if (hasSubmitted) return;
+  hasSubmitted = true;
+
+  const timeSeconds = Math.round((Date.now() - gameStartTime) / 1000);
+  const totalQuestions = quizAnswers.length + scenarioAnswers.length;
+  const correctCount = quizAnswers.filter(a => a.is_correct).length + scenarioAnswers.filter(a => a.is_correct).length;
+  const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
+  const submissionData = {
+    type: 'GAME_SUBMIT',
+    data: {
+      score: gameState.currentScore,
+      accuracy_percent: accuracy,
+      time_spent_seconds: timeSeconds,
+      quiz_answers: quizAnswers,
+      scenario_answers: scenarioAnswers,
+      total_questions: totalQuestions,
+      correct_answers: correctCount
+    }
+  };
+
+  console.log('Submitting game data:', submissionData);
+  window.parent.postMessage(submissionData, '*');
+
+  // Update button UI
+  const submitBtn = document.getElementById('submit-answers-btn');
+  if (submitBtn) {
+    submitBtn.textContent = '✅ Submitted to Teacher!';
+    submitBtn.disabled = true;
+    submitBtn.style.background = '#22c55e';
+    submitBtn.style.cursor = 'default';
+  }
+
+  const notice = document.getElementById('auto-submit-notice');
+  if (notice) {
+    notice.textContent = '✅ Your answers have been sent to your teacher!';
+    notice.style.color = '#22c55e';
+  }
+}
+
+function autoSubmitTimer() {
+  setTimeout(() => {
+    if (!hasSubmitted) {
+      console.log('Auto-submitting after 30 seconds...');
+      submitGameData();
+    }
+  }, 30000);
+}
+
+// ===================== TRACKING HOOKS =====================
+// Wrap existing functions to send data to parent window
 (function() {
   // Hook into quiz answer selection
   const originalSelectQuizAnswer = window.selectQuizAnswer;
   window.selectQuizAnswer = function(index) {
     const q = gameData.quiz.questions[gameState.currentQuestion];
     const isCorrect = index === q.correct;
-    
-    window.parent.postMessage({
-      type: 'GAME_ANSWER',
-      data: {
-        question_id: 'quiz-' + gameState.currentQuestion,
-        question_text: q.q.substring(0, 100),
-        student_answer: q.options[index],
-        correct_answer: q.options[q.correct],
-        is_correct: isCorrect,
-        time_taken_ms: 3000
-      }
-    }, '*');
-    
+
+    quizAnswers.push({
+      question_id: 'quiz-' + gameState.currentQuestion,
+      question_text: q.q.substring(0, 100),
+      student_answer: q.options[index],
+      correct_answer: q.options[q.correct],
+      is_correct: isCorrect,
+      time_taken_ms: 3000
+    });
+
+    sendAnswerToParent(
+      'quiz-' + gameState.currentQuestion,
+      q.q.substring(0, 100),
+      q.options[index],
+      q.options[q.correct],
+      isCorrect,
+      3000
+    );
+
     return originalSelectQuizAnswer(index);
   };
 
@@ -695,65 +775,102 @@ window.finishGame = finishGame;
     const s = gameData.scenarios.scenarios[gameState.currentQuestion];
     const choice = s.choices[index];
     const bestChoice = s.choices.reduce((best, c) => c.score > best.score ? c : best, s.choices[0]);
-    
-    window.parent.postMessage({
-      type: 'GAME_ANSWER',
-      data: {
-        question_id: 'scenario-' + gameState.currentQuestion,
-        question_text: s.title.substring(0, 100),
-        student_answer: choice.text.substring(0, 100),
-        correct_answer: bestChoice.text.substring(0, 100),
-        is_correct: choice.score >= 8,
-        time_taken_ms: 5000
-      }
-    }, '*');
-    
+    const isCorrect = choice.score >= 8;
+
+    scenarioAnswers.push({
+      question_id: 'scenario-' + gameState.currentQuestion,
+      question_text: s.title.substring(0, 100),
+      student_answer: choice.text.substring(0, 100),
+      correct_answer: bestChoice.text.substring(0, 100),
+      is_correct: isCorrect,
+      time_taken_ms: 5000
+    });
+
+    sendAnswerToParent(
+      'scenario-' + gameState.currentQuestion,
+      s.title.substring(0, 100),
+      choice.text.substring(0, 100),
+      bestChoice.text.substring(0, 100),
+      isCorrect,
+      5000
+    );
+
     return originalSelectScenario(index);
   };
 
-  // Hook into speed answer selection
-  const originalSelectSpeedAnswer = window.selectSpeedAnswer;
-  window.selectSpeedAnswer = function(index) {
-    const q = gameData.speed.questions[gameState.currentQuestion];
-    const timeTaken = (15 - gameState.timeLeft) * 1000;
-    
-    window.parent.postMessage({
-      type: 'GAME_ANSWER',
-      data: {
-        question_id: 'speed-' + gameState.currentQuestion,
-        question_text: q.text.substring(0, 100),
-        student_answer: index >= 0 ? q.options[index] : 'No answer',
-        correct_answer: q.bias,
-        is_correct: index >= 0 && q.options[index] === q.bias,
-        time_taken_ms: timeTaken
-      }
-    }, '*');
-    
-    return originalSelectSpeedAnswer(index);
-  };
-
-  // Hook into finishGame
+  // Hook into finishGame to add submit button
   const originalFinishGame = window.finishGame;
   window.finishGame = function() {
     // Calculate accuracy
-    const totalQuestions = gameState.currentQuestion + 1;
-    const maxScore = totalQuestions * 100;
-    const accuracy = maxScore > 0 ? Math.round((gameState.currentScore / maxScore) * 100) : 0;
-    
-    window.parent.postMessage({
-      type: 'GAME_COMPLETE',
-      data: {
-        score: gameState.currentScore,
-        accuracy_percent: Math.min(100, accuracy),
-        time_spent_seconds: 0
+    const totalQuestions = quizAnswers.length + scenarioAnswers.length;
+    const correctCount = quizAnswers.filter(a => a.is_correct).length + scenarioAnswers.filter(a => a.is_correct).length;
+    const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
+    // Call original finishGame
+    const result = originalFinishGame();
+
+    // Add submit button to results screen
+    setTimeout(() => {
+      const resultsScreen = document.getElementById('resultsScreen');
+      if (resultsScreen && !document.getElementById('submit-answers-btn')) {
+        const submitBtn = document.createElement('button');
+        submitBtn.id = 'submit-answers-btn';
+        submitBtn.textContent = '📤 Submit Answers to Teacher';
+        submitBtn.style.cssText = `
+          display: block;
+          margin: 20px auto;
+          padding: 15px 30px;
+          font-size: 18px;
+          font-weight: bold;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          color: white;
+          border: none;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.3s;
+          box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        `;
+        submitBtn.onmouseover = function() { this.style.transform = 'scale(1.05)'; };
+        submitBtn.onmouseout = function() { this.style.transform = 'scale(1)'; };
+        submitBtn.onclick = submitGameData;
+
+        // Insert before the "Return to HQ" button
+        const returnBtn = resultsScreen.querySelector('button[onclick="showHome()"]');
+        if (returnBtn) {
+          resultsScreen.insertBefore(submitBtn, returnBtn);
+        } else {
+          resultsScreen.appendChild(submitBtn);
+        }
+
+        // Add auto-submit notice
+        const notice = document.createElement('p');
+        notice.id = 'auto-submit-notice';
+        notice.textContent = '⏰ Auto-submitting in 30 seconds if not clicked...';
+        notice.style.cssText = 'text-align: center; color: #94a3b8; font-size: 14px; margin-top: 10px; margin-bottom: 10px;';
+        resultsScreen.insertBefore(notice, submitBtn);
+
+        // Start auto-submit timer
+        autoSubmitTimer();
+
+        // Update countdown
+        let countdown = 30;
+        const countdownInterval = setInterval(() => {
+          countdown--;
+          const noticeEl = document.getElementById('auto-submit-notice');
+          if (noticeEl && !hasSubmitted) {
+            noticeEl.textContent = `⏰ Auto-submitting in ${countdown} seconds...`;
+          } else {
+            clearInterval(countdownInterval);
+          }
+        }, 1000);
       }
-    }, '*');
-    
-    return originalFinishGame();
+    }, 500);
+
+    return result;
   };
 
-  console.log('✅ Tracking hooks installed');
-})();}
+  console.log('✅ Tracking hooks and submit system installed');
+})();
 </script>
 </body>
 </html>
