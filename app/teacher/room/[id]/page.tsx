@@ -22,6 +22,7 @@ export default function TeacherRoomPage() {
   const [participants, setParticipants] = useState<any[]>([])
   const [games, setGames] = useState<GameConfig[]>([])
   const [qrUrl, setQrUrl] = useState('')
+  const [className, setClassName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -33,7 +34,19 @@ export default function TeacherRoomPage() {
 
   const loadRoom = useCallback(async () => {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
-    if (data) setRoom(data)
+    if (data) {
+      setRoom(data)
+      if (data.class_id) {
+        const { data: cls } = await supabase
+          .from('classes')
+          .select('class_name')
+          .eq('id', data.class_id)
+          .maybeSingle()
+        setClassName(cls?.class_name ?? null)
+      } else {
+        setClassName(null)
+      }
+    }
   }, [roomId])
 
   const loadParticipants = useCallback(async () => {
@@ -126,7 +139,12 @@ export default function TeacherRoomPage() {
                 {room.status.toUpperCase()}
               </span>
             </div>
-            <p className="text-indigo-200">{participants.length} students connected</p>
+            <p className="text-indigo-200">
+              {participants.length} students connected
+              {className && (
+                <span className="text-indigo-300/80"> · Class: {className}</span>
+              )}
+            </p>
           </div>
           <div className="flex gap-3">
             <button onClick={kickAllStudents} className="px-4 py-2 bg-orange-500/20 text-orange-300 rounded-xl hover:bg-orange-500/30 text-sm">

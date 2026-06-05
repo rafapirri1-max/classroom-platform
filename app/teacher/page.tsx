@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
+import { createTeacherRoom } from '@/lib/rooms'
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState<any>(null)
@@ -10,6 +11,9 @@ export default function TeacherDashboard() {
   const [classes, setClasses] = useState<any[]>([])
   const [rooms, setRooms] = useState<any[]>([])
   const [showClosed, setShowClosed] = useState(false)
+  const [showCreateRoom, setShowCreateRoom] = useState(false)
+  const [createRoomClassId, setCreateRoomClassId] = useState('')
+  const [creatingRoom, setCreatingRoom] = useState(false)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -36,19 +40,25 @@ export default function TeacherDashboard() {
     const { data: roomData } = await supabase
       .from('rooms')
       .select('*')
+      .or(`teacher_id.eq.${prof.id},teacher_id.is.null`)
       .order('created_at', { ascending: false })
 
     setRooms(roomData || [])
     setLoading(false)
   }
 
-  async function createRoom() {
-    const code = Math.floor(1000 + Math.random() * 9000).toString()
-    const { data, error } = await supabase
-      .from('rooms')
-      .insert({ code, status: 'active' })
-      .select()
-      .single()
+  async function createRoom(classId?: string | null) {
+    if (!profile?.id) return
+    setCreatingRoom(true)
+
+    const { data, error } = await createTeacherRoom(supabase, {
+      teacherId: profile.id,
+      classId: classId ?? null,
+    })
+
+    setCreatingRoom(false)
+    setShowCreateRoom(false)
+    setCreateRoomClassId('')
 
     if (error) {
       alert('Error creating room: ' + error.message)
@@ -58,6 +68,11 @@ export default function TeacherDashboard() {
     if (data) {
       router.push(`/teacher/room/${data.id}`)
     }
+  }
+
+  function openCreateRoom() {
+    setCreateRoomClassId('')
+    setShowCreateRoom(true)
   }
 
   async function reopenRoom(roomId: string) {
@@ -72,9 +87,11 @@ export default function TeacherDashboard() {
     }
 
     // Refresh rooms
+    if (!profile?.id) return
     const { data } = await supabase
       .from('rooms')
       .select('*')
+      .or(`teacher_id.eq.${profile.id},teacher_id.is.null`)
       .order('created_at', { ascending: false })
 
     setRooms(data || [])
@@ -197,8 +214,9 @@ export default function TeacherDashboard() {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">🎮 Active Rooms</h2>
             <button
-              onClick={createRoom}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+              onClick={openCreateRoom}
+              disabled={creatingRoom}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2 disabled:opacity-50">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
@@ -211,8 +229,9 @@ export default function TeacherDashboard() {
               <div className="text-6xl mb-4">🎮</div>
               <h3 className="text-lg font-medium text-gray-300 mb-2">No active rooms</h3>
               <p className="text-gray-500 mb-4">Create a room to launch games with students.</p>
-              <button onClick={createRoom}
-                className="inline-block bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition">
+              <button onClick={openCreateRoom}
+                disabled={creatingRoom}
+                className="inline-block bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition disabled:opacity-50">
                 Create First Room
               </button>
             </div>
@@ -228,6 +247,12 @@ export default function TeacherDashboard() {
                       <h3 className="font-semibold">Room {room.code}</h3>
                       <p className="text-sm text-gray-400">
                         Created {new Date(room.created_at).toLocaleDateString()}
+                        {room.class_id && classes.find((c) => c.id === room.class_id) && (
+                          <span className="text-purple-300">
+                            {' '}
+                            · {classes.find((c) => c.id === room.class_id)?.class_name}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -282,6 +307,47 @@ export default function TeacherDashboard() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {showCreateRoom && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700">
+              <h3 className="text-lg font-semibold mb-2">Create room</h3>
+              <p className="text-sm text-gray-400 mb-4">
+                Optionally link this live session to a class for clearer analytics.
+              </p>
+              <label className="block text-sm text-gray-400 mb-1">Class (optional)</label>
+              <select
+                value={createRoomClassId}
+                onChange={(e) => setCreateRoomClassId(e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 mb-6 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">No class — open session</option>
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.class_name}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateRoom(false)}
+                  className="px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => createRoom(createRoomClassId || null)}
+                  disabled={creatingRoom}
+                  className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition disabled:opacity-50"
+                >
+                  {creatingRoom ? 'Creating…' : 'Create room'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

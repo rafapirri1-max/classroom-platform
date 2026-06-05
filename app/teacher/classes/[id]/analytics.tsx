@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { fetchClassGameSessions } from '@/lib/class-sessions'
 
 interface AnalyticsData {
   sessions: any[]
@@ -37,16 +38,15 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
       .select('*, students(id, name, email)')
       .eq('class_id', classId)
 
-    const classStudentIds = enrollments?.map(e => e.students?.id).filter(Boolean) || []
+    const classStudentIds = enrollments?.map(e => e.students?.id).filter(Boolean) as string[] || []
     const classStudents = enrollments?.map(e => e.students).filter(Boolean) || []
 
-    // Get game sessions ONLY for students in this class
-    const { data: sessions } = await supabase
-      .from('game_sessions')
-      .select('*, students(name, email)')
-      .eq('game_type', 'bias-detective')
-      .in('student_id', classStudentIds.length > 0 ? classStudentIds : ['no-students'])
-      .order('created_at', { ascending: false })
+    const sessions = await fetchClassGameSessions(supabase, {
+      classId,
+      classStudentIds,
+      gameType: 'bias-detective',
+      select: '*, students(name, email)',
+    })
 
     // Get answers ONLY for sessions from students in this class
     const sessionIds = sessions?.map(s => s.id) || []
@@ -57,7 +57,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
       .order('created_at', { ascending: false })
 
     setData({
-      sessions: sessions || [],
+      sessions,
       answers: answers || [],
       students: classStudents,
       classStudents: classStudents

@@ -53,7 +53,7 @@ function StudentContent() {
     return data
   }, [roomId])
 
-  const startSessionForActivity = useCallback(async (activity: string, roomCode: string) => {
+  const startSessionForActivity = useCallback(async (activity: string, roomData: { code: string; id: string; class_id?: string | null }) => {
     const studentId = profileRef.current?.id
     if (!studentId || !isTrackableGame(activity)) return null
 
@@ -61,7 +61,9 @@ function StudentContent() {
       student_id: studentId,
       game_type: activity,
       mode: 'room',
-      room_code: roomCode,
+      room_code: roomData.code,
+      room_id: roomData.id,
+      class_id: roomData.class_id ?? null,
     })
 
     if (ok && json.session_id) {
@@ -90,7 +92,7 @@ function StudentContent() {
     sessionForAttemptRef.current = null
     beganAttemptForActivityRef.current = activity
 
-    await startSessionForActivity(activity, roomData.code)
+    await startSessionForActivity(activity, roomData)
   }, [resetSubmissionState, startSessionForActivity])
 
   const ensureSessionForCurrentAttempt = useCallback(async (roomData: any) => {
@@ -102,7 +104,7 @@ function StudentContent() {
     ) {
       return sessionIdRef.current
     }
-    return startSessionForActivity(activity, roomData.code)
+    return startSessionForActivity(activity, roomData)
   }, [startSessionForActivity])
 
   useEffect(() => {

@@ -13,10 +13,28 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'start_session': {
-        const { student_id, game_type, mode, room_code } = data
+        const { student_id, game_type, mode, room_code, room_id, class_id: classIdFromClient } = data
+
+        let class_id: string | null = classIdFromClient ?? null
+        if (!class_id && room_id) {
+          const { data: room } = await supabase
+            .from('rooms')
+            .select('class_id')
+            .eq('id', room_id)
+            .maybeSingle()
+          class_id = room?.class_id ?? null
+        }
+
         const { data: session, error } = await supabase
           .from('game_sessions')
-          .insert({ student_id, game_type, mode, room_code })
+          .insert({
+            student_id,
+            game_type,
+            mode,
+            room_code,
+            room_id: room_id ?? null,
+            class_id,
+          })
           .select()
           .single()
         if (error) throw error

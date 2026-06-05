@@ -1,11 +1,23 @@
-export async function startGameSession(student_id: string, game_type: string, mode: string, room_code?: string) {
+export async function startGameSession(
+  student_id: string,
+  game_type: string,
+  mode: string,
+  options?: { room_code?: string; room_id?: string; class_id?: string | null }
+) {
   const res = await fetch('/api/track', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'start_session',
-      data: { student_id, game_type, mode, room_code }
-    })
+      data: {
+        student_id,
+        game_type,
+        mode,
+        room_code: options?.room_code,
+        room_id: options?.room_id,
+        class_id: options?.class_id,
+      },
+    }),
   })
   const data = await res.json()
   return data.session_id

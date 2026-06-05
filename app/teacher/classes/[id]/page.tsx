@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
+import { fetchClassGameSessions } from '@/lib/class-sessions'
+import { createTeacherRoom } from '@/lib/rooms'
 import ClassAnalytics from './analytics'
 
 export default function ClassDetail() {
@@ -17,6 +19,7 @@ export default function ClassDetail() {
   const [activeTab, setActiveTab] = useState<'students' | 'sessions' | 'analytics'>('students')
   const [editingName, setEditingName] = useState(false)
   const [newClassName, setNewClassName] = useState('')
+  const [startingRoom, setStartingRoom] = useState(false)
 
   useEffect(() => { loadClassData() }, [classId])
 
@@ -43,15 +46,13 @@ export default function ClassDetail() {
 
     setStudents(enrollments || [])
 
-    const classStudentIds = enrollments?.map(e => e.students?.id).filter(Boolean) || []
-    const { data: sess } = await supabase
-      .from('game_sessions')
-      .select('*')
-      .in('student_id', classStudentIds.length > 0 ? classStudentIds : ['no-students'])
-      .neq('game_type', 'join')
-      .order('created_at', { ascending: false })
+    const classStudentIds = enrollments?.map(e => e.students?.id).filter(Boolean) as string[] || []
+    const sess = await fetchClassGameSessions(supabase, {
+      classId,
+      classStudentIds,
+    })
 
-    setSessions(sess || [])
+    setSessions(sess)
     setLoading(false)
   }
 
@@ -84,6 +85,23 @@ export default function ClassDetail() {
     }
 
     loadClassData()
+  }
+
+  async function startLiveSession() {
+    if (!classData) return
+    const profile = await getUserProfile()
+    if (!profile) return
+    setStartingRoom(true)
+    const { data, error } = await createTeacherRoom(supabase, {
+      teacherId: profile.id,
+      classId,
+    })
+    setStartingRoom(false)
+    if (error) {
+      alert('Error creating room: ' + error.message)
+      return
+    }
+    if (data) router.push(`/teacher/room/${data.id}`)
   }
 
   const copyCode = () => {
@@ -138,10 +156,19 @@ export default function ClassDetail() {
             )}
           </div>
 
-          <button onClick={copyCode}
-            className="bg-blue-900/50 hover:bg-blue-900 text-blue-300 px-3 py-1 rounded border border-blue-700 transition text-sm">
-            Copy Code: {classData?.class_code}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={startLiveSession}
+              disabled={startingRoom}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg transition text-sm disabled:opacity-50"
+            >
+              {startingRoom ? 'Starting…' : 'Start live session'}
+            </button>
+            <button onClick={copyCode}
+              className="bg-blue-900/50 hover:bg-blue-900 text-blue-300 px-3 py-1 rounded border border-blue-700 transition text-sm">
+              Copy Code: {classData?.class_code}
+            </button>
+          </div>
         </div>
       </header>
 
