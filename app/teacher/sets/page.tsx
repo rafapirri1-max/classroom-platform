@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -66,8 +66,9 @@ const COMMON_CATEGORIES = [
   "Business", "Finance", "Marketing", "GP", "Sociology"
 ];
 
-export default function MySetsPage() {
+function SetsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [sets, setSets] = useState<GameSet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -301,7 +302,6 @@ export default function MySetsPage() {
   }
 
   function launchGame(setId: string) {
-    // Navigate to the game launch page with the set ID
     router.push(`/teacher/launch-unfair?setId=${setId}`);
   }
 
@@ -594,5 +594,17 @@ export default function MySetsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function MySetsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
+      </div>
+    }>
+      <SetsContent />
+    </Suspense>
   );
 }

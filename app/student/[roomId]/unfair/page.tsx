@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useParams } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { createClient } from "@/lib/supabase";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Clock, Trophy } from "lucide-react";
@@ -27,7 +27,7 @@ interface GameState {
   teamNames: string[];
 }
 
-export default function StudentUnfairView() {
+function StudentUnfairContent() {
   const params = useParams();
   const roomId = params.roomId as string;
   const supabase = createClient();
@@ -39,7 +39,6 @@ export default function StudentUnfairView() {
   useEffect(() => {
     if (!roomId) return;
 
-    // Join the room
     const channel = supabase
       .channel(`room_${roomId}`)
       .on("broadcast", { event: "game_state" }, ({ payload }) => {
@@ -51,7 +50,6 @@ export default function StudentUnfairView() {
       })
       .subscribe();
 
-    // Notify teacher that student joined
     channel.send({
       type: "broadcast",
       event: "student_join",
@@ -83,7 +81,6 @@ export default function StudentUnfairView() {
     );
   }
 
-  // Game Over Screen
   if (gameState.gameOver) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
@@ -121,7 +118,6 @@ export default function StudentUnfairView() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-lg font-bold text-white">The Unfair Game</h1>
@@ -132,7 +128,6 @@ export default function StudentUnfairView() {
         </Badge>
       </div>
 
-      {/* Team Scores */}
       <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
         {gameState.scores.map((score, i) => (
           <Card
@@ -154,7 +149,6 @@ export default function StudentUnfairView() {
         ))}
       </div>
 
-      {/* Game Board (Read Only) */}
       <div className="bg-slate-800/30 rounded-2xl border border-slate-700 p-3 mb-4">
         <div className="grid grid-cols-5 gap-2">
           {gameState.tileUsed.map((used, i) => {
@@ -183,13 +177,11 @@ export default function StudentUnfairView() {
         </div>
       </div>
 
-      {/* Question Panel */}
       <Card className="bg-slate-800/50 border-slate-700 p-4">
         <div className="text-yellow-400 text-xs font-bold uppercase tracking-wider mb-2">
           {gameState.categoryText}
         </div>
 
-        {/* Timer */}
         {gameState.roundLocked && !gameState.currentRoundFinished && (
           <div className="mb-3">
             <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
@@ -207,37 +199,47 @@ export default function StudentUnfairView() {
           </div>
         )}
 
-        {/* Question */}
         <div className="bg-slate-900 rounded-xl p-4 min-h-[100px] flex items-center justify-center text-center text-white mb-3">
           {gameState.questionText}
         </div>
 
-        {/* Answer */}
         {gameState.answerVisible && (
           <div className="bg-slate-700/50 rounded-xl p-4 text-slate-200 mb-3">
             {gameState.answerText}
           </div>
         )}
 
-        {/* Result */}
         {gameState.resultText && (
           <div className="text-center text-2xl font-bold text-yellow-400 mb-3">
             {gameState.resultText}
           </div>
         )}
 
-        {/* Event Box */}
         <div className="bg-slate-900/50 rounded-xl p-3 text-sm text-slate-300">
           {gameState.eventBoxText}
         </div>
       </Card>
 
-      {/* Current Turn Indicator */}
       <div className="mt-4 text-center">
         <p className="text-slate-400 text-sm">
           Current turn: <span className="text-yellow-400 font-bold">{gameState.teamNames[gameState.currentTeam]}</span>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function StudentUnfairView() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <p className="text-slate-400">Loading...</p>
+        </div>
+      </div>
+    }>
+      <StudentUnfairContent />
+    </Suspense>
   );
 }

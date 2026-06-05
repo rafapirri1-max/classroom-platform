@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
 
-export default function StudentPage() {
+function StudentContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const roomId = params.roomId as string
@@ -17,9 +17,6 @@ export default function StudentPage() {
   const [gameSubmitted, setGameSubmitted] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState('')
 
-  const sessionIdRef = useRef<string | null>(null)
-  const profileRef = useRef<any>(null)
-
   const loadRoom = useCallback(async () => {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
     if (data) setRoom(data)
@@ -31,28 +28,25 @@ export default function StudentPage() {
 
     getUserProfile().then(prof => {
       setProfile(prof)
-      profileRef.current = prof
     })
 
     const channel = supabase.channel(`student-room-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, async (payload) => {
         setRoom(payload.new)
 
-        // Start tracking session when game launches
         if (payload.new.current_activity !== 'waiting' && 
             payload.new.current_activity !== 'poll' && 
             payload.new.current_activity !== 'wordcloud' &&
             payload.new.current_activity !== payload.old?.current_activity) {
 
-          const prof = profileRef.current
-          if (prof?.id) {
+          if (profile?.id) {
             const res = await fetch('/api/track', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'start_session',
                 data: {
-                  student_id: prof.id,
+                  student_id: profile.id,
                   game_type: payload.new.current_activity,
                   mode: 'room',
                   room_code: payload.new.code
@@ -61,7 +55,6 @@ export default function StudentPage() {
             })
             const data = await res.json()
             if (data.session_id) {
-              sessionIdRef.current = data.session_id
               setSessionId(data.session_id)
             }
           }
@@ -72,30 +65,24 @@ export default function StudentPage() {
     return () => { channel.unsubscribe() }
   }, [roomId, loadRoom])
 
-  // Listen for game submission messages
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       if (event.data.type === 'GAME_SUBMIT') {
-        console.log('Received game submission:', event.data.data)
         setSubmissionStatus('Submitting...')
 
-        const currentSessionId = sessionIdRef.current
-        const prof = profileRef.current
-
-        if (!currentSessionId || !prof?.id) {
+        if (!sessionId || !profile?.id) {
           setSubmissionStatus('Error: No active session')
           return
         }
 
-        // Save final session data
         const sessionRes = await fetch('/api/track', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'end_session',
             data: {
-              session_id: currentSessionId,
-              student_id: prof.id,
+              session_id: sessionId,
+              student_id: profile.id,
               score: event.data.data.score,
               accuracy_percent: event.data.data.accuracy_percent,
               time_spent_seconds: event.data.data.time_spent_seconds,
@@ -105,34 +92,25 @@ export default function StudentPage() {
         })
 
         const sessionResult = await sessionRes.json()
-        console.log('Session saved:', sessionResult)
 
-        // Save quiz answers
         for (const answer of event.data.data.quiz_answers) {
           await fetch('/api/track', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'record_answer',
-              data: {
-                session_id: currentSessionId,
-                ...answer
-              }
+              data: { session_id: sessionId, ...answer }
             })
           })
         }
 
-        // Save scenario answers
         for (const answer of event.data.data.scenario_answers) {
           await fetch('/api/track', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'record_answer',
-              data: {
-                session_id: currentSessionId,
-                ...answer
-              }
+              data: { session_id: sessionId, ...answer }
             })
           })
         }
@@ -144,7 +122,7 @@ export default function StudentPage() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  }, [sessionId, profile])
 
   if (loading) {
     return (
@@ -228,5 +206,17 @@ export default function StudentPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function StudentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950 flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    }>
+      <StudentContent />
+    </Suspense>
   )
 }

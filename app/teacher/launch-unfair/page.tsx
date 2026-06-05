@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { createClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Play, Users, Clock, Settings, Dices } from "lucide-react";
+import { ArrowLeft, Play, Users, Dices } from "lucide-react";
 import { toast } from "sonner";
 
 interface GameSet {
@@ -26,7 +26,7 @@ interface ClassData {
   class_code: string;
 }
 
-export default function LaunchUnfairPage() {
+function LaunchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedSetId = searchParams.get("setId");
@@ -53,7 +53,6 @@ export default function LaunchUnfairPage() {
     }
     setUser(user);
 
-    // Load sets
     const { data: setsData } = await supabase
       .from("game_sets")
       .select("*")
@@ -61,7 +60,6 @@ export default function LaunchUnfairPage() {
       .order("created_at", { ascending: false });
     setSets(setsData || []);
 
-    // Load classes
     const { data: classesData } = await supabase
       .from("classes")
       .select("id, class_name, class_code")
@@ -69,7 +67,6 @@ export default function LaunchUnfairPage() {
       .order("created_at", { ascending: false });
     setClasses(classesData || []);
 
-    // Generate room code
     setRoomCode(generateRoomCode());
     setLoading(false);
   }
@@ -94,7 +91,6 @@ export default function LaunchUnfairPage() {
       return;
     }
 
-    // Create session record
     const { data: session, error } = await supabase
       .from("unfair_game_sessions")
       .insert({
@@ -113,7 +109,6 @@ export default function LaunchUnfairPage() {
       return;
     }
 
-    // Navigate to the game host page
     router.push(`/teacher/unfair-host?sessionId=${session.id}&roomCode=${roomCode}`);
   }
 
@@ -144,7 +139,6 @@ export default function LaunchUnfairPage() {
             <CardTitle className="text-white">Game Setup</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Question Set */}
             <div>
               <Label className="text-slate-300 mb-2 block">Question Set *</Label>
               <Select value={selectedSet} onValueChange={setSelectedSet}>
@@ -153,7 +147,7 @@ export default function LaunchUnfairPage() {
                 </SelectTrigger>
                 <SelectContent className="bg-slate-700 border-slate-600">
                   {sets.map(set => (
-                    <SelectItem key={set.id} value={set.id} className="text-white hover:bg-slate-600">
+                    <SelectItem key={set.id} value={set.id}>
                       <div className="flex items-center gap-2">
                         <span>{set.name}</span>
                         <Badge variant="outline" className="text-xs">{set.questions?.length || 0} Qs</Badge>
@@ -169,7 +163,6 @@ export default function LaunchUnfairPage() {
               )}
             </div>
 
-            {/* Class */}
             <div>
               <Label className="text-slate-300 mb-2 block">Class *</Label>
               <Select value={selectedClass} onValueChange={setSelectedClass}>
@@ -178,7 +171,7 @@ export default function LaunchUnfairPage() {
                 </SelectTrigger>
                 <SelectContent className="bg-slate-700 border-slate-600">
                   {classes.map(cls => (
-                    <SelectItem key={cls.id} value={cls.id} className="text-white hover:bg-slate-600">
+                    <SelectItem key={cls.id} value={cls.id}>
                       {cls.class_name} ({cls.class_code})
                     </SelectItem>
                   ))}
@@ -186,7 +179,6 @@ export default function LaunchUnfairPage() {
               </Select>
             </div>
 
-            {/* Teams */}
             <div>
               <Label className="text-slate-300 mb-2 block">Number of Teams</Label>
               <div className="flex gap-2">
@@ -206,7 +198,6 @@ export default function LaunchUnfairPage() {
               </div>
             </div>
 
-            {/* Room Code */}
             <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
               <div className="flex items-center justify-between">
                 <div>
@@ -229,7 +220,6 @@ export default function LaunchUnfairPage() {
               </p>
             </div>
 
-            {/* Selected Set Preview */}
             {selectedSet && (
               <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600/50">
                 <div className="flex items-center gap-2 mb-2">
@@ -255,5 +245,17 @@ export default function LaunchUnfairPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function LaunchUnfairPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
+      </div>
+    }>
+      <LaunchContent />
+    </Suspense>
   );
 }

@@ -1,120 +1,252 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { createClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Play, Users, Clock, Settings, Dices } from "lucide-react";
+import { ArrowLeft, Play, SkipForward, RotateCcw, Trophy } from "lucide-react";
 import { toast } from "sonner";
+
+interface GameState {
+  tileUsed: boolean[];
+  scores: number[];
+  currentTeam: number;
+  categoryText: string;
+  questionText: string;
+  answerText: string;
+  answerVisible: boolean;
+  resultText: string;
+  eventBoxText: string;
+  timeLeft: number;
+  totalTime: number;
+  roundLocked: boolean;
+  currentRoundFinished: boolean;
+  immunityTeam: number | null;
+  gameOver: boolean;
+  winnerText: string;
+  teamNames: string[];
+  currentQuestionIndex: number;
+}
 
 interface GameSet {
   id: string;
   name: string;
-  subject: string;
-  questions: any[];
-  settings: any;
+  questions: { category: string; question: string; answer: string }[];
+  settings: {
+    timerDuration: number;
+    pointValues: number[];
+    bossPointValues: number[];
+    enableTrap: boolean;
+    enableBoss: boolean;
+    enableEvent: boolean;
+    trapPercent: number;
+    bossPercent: number;
+    eventPercent: number;
+  };
 }
 
-interface ClassData {
-  id: string;
-  class_name: string;
-  class_code: string;
-}
-
-export default function LaunchUnfairPage() {
+function HostContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preselectedSetId = searchParams.get("setId");
+  const sessionId = searchParams.get("sessionId");
+  const roomCode = searchParams.get("roomCode");
   const supabase = createClient();
 
-  const [sets, setSets] = useState<GameSet[]>([]);
-  const [classes, setClasses] = useState<ClassData[]>([]);
-  const [selectedSet, setSelectedSet] = useState<string>(preselectedSetId || "");
-  const [selectedClass, setSelectedClass] = useState<string>("");
-  const [teamCount, setTeamCount] = useState(4);
-  const [roomCode, setRoomCode] = useState("");
+  const [gameSet, setGameSet] = useState<GameSet | null>(null);
+  const [gameState, setGameState] = useState<GameState>({
+    tileUsed: Array(25).fill(false),
+    scores: [0, 0, 0, 0],
+    currentTeam: 0,
+    categoryText: "",
+    questionText: "Select a tile to start!",
+    answerText: "",
+    answerVisible: false,
+    resultText: "",
+    eventBoxText: "Welcome to The Unfair Game!",
+    timeLeft: 0,
+    totalTime: 0,
+    roundLocked: false,
+    currentRoundFinished: true,
+    immunityTeam: null,
+    gameOver: false,
+    winnerText: "",
+    teamNames: ["Team 1", "Team 2", "Team 3", "Team 4"],
+    currentQuestionIndex: -1,
+  });
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [tileTypes, setTileTypes] = useState<string[]>([]);
 
   useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
+    if (!sessionId) {
+      router.push("/teacher/sets");
       return;
     }
-    setUser(user);
+    loadSession();
+  }, [sessionId]);
 
-    // Load sets
-    const { data: setsData } = await supabase
-      .from("game_sets")
-      .select("*")
-      .eq("teacher_id", user.id)
-      .order("created_at", { ascending: false });
-    setSets(setsData || []);
+  async function loadSession() {
+    const { data: session } = await supabase
+      .from("unfair_game_sessions")
+      .select("*, game_sets(*)")
+      .eq("id", sessionId)
+      .single();
 
-    // Load classes
-    const { data: classesData } = await supabase
-      .from("classes")
-      .select("id, class_name, class_code")
-      .eq("teacher_id", user.id)
-      .order("created_at", { ascending: false });
-    setClasses(classesData || []);
+    if (!session) {
+      toast.error("Session not found");
+      router.push("/teacher/sets");
+      return;
+    }
 
-    // Generate room code
-    setRoomCode(generateRoomCode());
+    setGameSet(session.game_sets);
+    
+    const teamCount = session.team_names?.length || 4;
+    const names = session.team_names || Array.from({ length: teamCount }, (_, i) => `Team ${i + 1}`);
+    
+    setGameState(prev => ({
+      ...prev,
+      scores: Array(teamCount).fill(0),
+      teamNames: names,
+      tileUsed: Array(25).fill(false),
+    }));
+
+    const types = generateTileTypes(session.game_sets?.settings);
+    setTileTypes(types);
     setLoading(false);
   }
 
-  function generateRoomCode() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  function generateTileTypes(settings: any) {
+    const types = Array(25).fill("normal");
+    const trapCount = Math.floor(25 * (settings?.trapPercent || 12) / 100);
+    const bossCount = Math.floor(25 * (settings?.bossPercent || 12) / 100);
+    const eventCount = Math.floor(25 * (settings?.eventPercent || 12) / 100);
+
+    let available = Array.from({ length: 25 }, (_, i) => i);
+    
+    for (let i = available.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [available[i], available[j]] = [available[j], available[i]];
+    }
+
+    let idx = 0;
+    for (let i = 0; i < bossCount && idx < available.length; i++) types[available[idx++]] = "boss";
+    for (let i = 0; i < trapCount && idx < available.length; i++) types[available[idx++]] = "trap";
+    for (let i = 0; i < eventCount && idx < available.length; i++) types[available[idx++]] = "event";
+
+    return types;
   }
 
-  async function launchGame() {
-    if (!selectedSet) {
-      toast.error("Select a question set");
-      return;
+  function selectTile(index: number) {
+    if (gameState.roundLocked || gameState.tileUsed[index] || gameState.gameOver) return;
+
+    const type = tileTypes[index];
+    const newTileUsed = [...gameState.tileUsed];
+    newTileUsed[index] = true;
+
+    let points = 0;
+    let category = "General";
+    let question = "No question available";
+    let answer = "";
+
+    if (gameSet && gameSet.questions && gameSet.questions.length > 0) {
+      const qIndex = Math.floor(Math.random() * gameSet.questions.length);
+      const q = gameSet.questions[qIndex];
+      category = q.category || "General";
+      question = q.question;
+      answer = q.answer;
     }
-    if (!selectedClass) {
-      toast.error("Select a class");
+
+    const settings = gameSet?.settings;
+    const pointValues = settings?.pointValues || [-700, -500, -400, -300, -200, 200, 300, 400, 500, 700];
+    const bossValues = settings?.bossPointValues || [-1200, -900, -700, 700, 900, 1200];
+
+    if (type === "boss") {
+      points = bossValues[Math.floor(Math.random() * bossValues.length)];
+    } else if (type === "trap") {
+      points = -Math.abs(pointValues[Math.floor(Math.random() * pointValues.length)]);
+    } else if (type === "event") {
+      points = pointValues[Math.floor(Math.random() * pointValues.length)];
+    } else {
+      points = pointValues[Math.floor(Math.random() * pointValues.length)];
+    }
+
+    const newScores = [...gameState.scores];
+    const currentTeam = gameState.currentTeam;
+    
+    if (gameState.immunityTeam !== currentTeam) {
+      newScores[currentTeam] += points;
+    }
+
+    const timerDuration = settings?.timerDuration || 40;
+
+    setGameState(prev => ({
+      ...prev,
+      tileUsed: newTileUsed,
+      scores: newScores,
+      categoryText: category,
+      questionText: question,
+      answerText: answer,
+      answerVisible: false,
+      resultText: `${points > 0 ? "+" : ""}${points} points!`,
+      eventBoxText: `${prev.teamNames[currentTeam]} selected tile ${index + 1} (${type})`,
+      timeLeft: timerDuration,
+      totalTime: timerDuration,
+      roundLocked: true,
+      currentRoundFinished: false,
+      currentQuestionIndex: index,
+    }));
+
+    const timer = setInterval(() => {
+      setGameState(prev => {
+        if (prev.timeLeft <= 1) {
+          clearInterval(timer);
+          return { ...prev, timeLeft: 0, roundLocked: false, currentRoundFinished: true };
+        }
+        return { ...prev, timeLeft: prev.timeLeft - 1 };
+      });
+    }, 1000);
+  }
+
+  function revealAnswer() {
+    setGameState(prev => ({ ...prev, answerVisible: true }));
+  }
+
+  function nextTurn() {
+    if (!gameState.currentRoundFinished) return;
+
+    const allUsed = gameState.tileUsed.every(t => t);
+    if (allUsed) {
+      const winner = gameState.scores.indexOf(Math.max(...gameState.scores));
+      setGameState(prev => ({
+        ...prev,
+        gameOver: true,
+        winnerText: `🏆 ${prev.teamNames[winner]} wins with ${prev.scores[winner]} points!`,
+      }));
       return;
     }
 
-    const set = sets.find(s => s.id === selectedSet);
-    if (!set) {
-      toast.error("Set not found");
-      return;
-    }
+    setGameState(prev => ({
+      ...prev,
+      currentTeam: (prev.currentTeam + 1) % prev.teamNames.length,
+      roundLocked: false,
+      currentRoundFinished: true,
+      categoryText: "",
+      questionText: "Select a tile!",
+      answerText: "",
+      answerVisible: false,
+      resultText: "",
+      eventBoxText: `${prev.teamNames[(prev.currentTeam + 1) % prev.teamNames.length]}'s turn!`,
+    }));
+  }
 
-    // Create session record
-    const { data: session, error } = await supabase
-      .from("unfair_game_sessions")
-      .insert({
-        class_id: selectedClass,
-        room_code: roomCode,
-        set_id: selectedSet,
-        teacher_id: user.id,
-        status: "active",
-        team_names: Array.from({ length: teamCount }, (_, i) => `Team ${i + 1}`),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      toast.error("Failed to launch: " + error.message);
-      return;
-    }
-
-    // Navigate to the game host page
-    router.push(`/teacher/unfair-host?sessionId=${session.id}&roomCode=${roomCode}`);
+  function endGame() {
+    const winner = gameState.scores.indexOf(Math.max(...gameState.scores));
+    setGameState(prev => ({
+      ...prev,
+      gameOver: true,
+      winnerText: `🏆 ${prev.teamNames[winner]} wins with ${prev.scores[winner]} points!`,
+    }));
   }
 
   if (loading) {
@@ -125,135 +257,190 @@ export default function LaunchUnfairPage() {
     );
   }
 
+  if (gameState.gameOver) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+        <div className="max-w-lg mx-auto text-center pt-12">
+          <Trophy className="w-20 h-20 text-yellow-400 mx-auto mb-6" />
+          <h1 className="text-4xl font-bold text-white mb-4">Game Over!</h1>
+          <p className="text-slate-400 mb-8 text-xl">{gameState.winnerText}</p>
+
+          <div className="space-y-3">
+            {gameState.scores
+              .map((s, i) => ({ score: s, name: gameState.teamNames[i], index: i }))
+              .sort((a, b) => b.score - a.score)
+              .map((item, rank) => (
+                <Card key={item.index} className={`p-4 ${
+                  rank === 0 ? "bg-yellow-400/10 border-yellow-400/30" : "bg-slate-800/50 border-slate-700"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xl font-bold ${rank === 0 ? "text-yellow-400" : "text-slate-400"}`}>
+                        #{rank + 1}
+                      </span>
+                      <span className="font-bold text-white text-lg">{item.name}</span>
+                    </div>
+                    <span className={`text-2xl font-bold ${item.score >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {item.score > 0 ? "+" : ""}{item.score}
+                    </span>
+                  </div>
+                </Card>
+              ))}
+          </div>
+
+          <Button
+            onClick={() => router.push("/teacher/sets")}
+            className="mt-8 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Sets
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
-      <div className="max-w-2xl mx-auto">
-        <Button
-          variant="ghost"
-          onClick={() => router.push("/teacher/sets")}
-          className="text-slate-400 hover:text-white mb-6"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back to My Sets
-        </Button>
-
-        <h1 className="text-3xl font-bold text-white mb-2">Launch Unfair Game</h1>
-        <p className="text-slate-400 mb-8">Configure your game and share the room code with students</p>
-
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white">Game Setup</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Question Set */}
-            <div>
-              <Label className="text-slate-300 mb-2 block">Question Set *</Label>
-              <Select value={selectedSet} onValueChange={setSelectedSet}>
-                <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                  <SelectValue placeholder="Choose a set..." />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  {sets.map(set => (
-                    <SelectItem key={set.id} value={set.id} className="text-white hover:bg-slate-600">
-                      <div className="flex items-center gap-2">
-                        <span>{set.name}</span>
-                        <Badge variant="outline" className="text-xs">{set.questions?.length || 0} Qs</Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {sets.length === 0 && (
-                <p className="text-sm text-red-400 mt-2">
-                  No sets found. <Button variant="link" onClick={() => router.push("/teacher/sets")} className="text-yellow-400 p-0 h-auto">Create one first</Button>
-                </p>
-              )}
-            </div>
-
-            {/* Class */}
-            <div>
-              <Label className="text-slate-300 mb-2 block">Class *</Label>
-              <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                  <SelectValue placeholder="Choose a class..." />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  {classes.map(cls => (
-                    <SelectItem key={cls.id} value={cls.id} className="text-white hover:bg-slate-600">
-                      {cls.class_name} ({cls.class_code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Teams */}
-            <div>
-              <Label className="text-slate-300 mb-2 block">Number of Teams</Label>
-              <div className="flex gap-2">
-                {[2, 3, 4, 5, 6].map(n => (
-                  <Button
-                    key={n}
-                    variant={teamCount === n ? "default" : "outline"}
-                    onClick={() => setTeamCount(n)}
-                    className={teamCount === n 
-                      ? "bg-yellow-500 text-black font-bold" 
-                      : "border-slate-600 text-slate-300 hover:bg-slate-700"
-                    }
-                  >
-                    <Users className="w-4 h-4 mr-1" /> {n}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {/* Room Code */}
-            <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-slate-300 text-sm">Room Code</Label>
-                  <div className="text-3xl font-bold text-yellow-400 tracking-wider">{roomCode}</div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(roomCode);
-                    toast.success("Room code copied!");
-                  }}
-                  className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                >
-                  Copy
-                </Button>
-              </div>
-              <p className="text-sm text-slate-400 mt-2">
-                Students join at <span className="text-yellow-400">/student/{roomCode}</span>
-              </p>
-            </div>
-
-            {/* Selected Set Preview */}
-            {selectedSet && (
-              <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600/50">
-                <div className="flex items-center gap-2 mb-2">
-                  <Dices className="w-5 h-5 text-yellow-400" />
-                  <span className="font-bold text-white">{sets.find(s => s.id === selectedSet)?.name}</span>
-                </div>
-                <div className="flex gap-4 text-sm text-slate-400">
-                  <span>{sets.find(s => s.id === selectedSet)?.questions?.length || 0} questions</span>
-                  <span>•</span>
-                  <span>{sets.find(s => s.id === selectedSet)?.subject || "No subject"}</span>
-                </div>
-              </div>
-            )}
-
-            <Button
-              onClick={launchGame}
-              disabled={!selectedSet || !selectedClass}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-lg py-6"
-            >
-              <Play className="w-5 h-5 mr-2" /> Launch Game
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white">The Unfair Game</h1>
+            <p className="text-slate-400 text-sm">Room: <span className="text-yellow-400 font-mono">{roomCode}</span></p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={endGame} className="border-red-500 text-red-400 hover:bg-red-500/20">
+              End Game
             </Button>
-          </CardContent>
+            <Button variant="outline" onClick={() => router.push("/teacher/sets")} className="border-slate-600 text-slate-300">
+              <ArrowLeft className="w-4 h-4 mr-1" /> Exit
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          {gameState.scores.map((score, i) => (
+            <Card
+              key={i}
+              className={`min-w-[130px] p-3 ${
+                i === gameState.currentTeam
+                  ? "border-yellow-400 shadow-lg shadow-yellow-400/20"
+                  : "border-slate-700"
+              } ${i === gameState.immunityTeam ? "ring-2 ring-blue-400" : ""}`}
+            >
+              <div className="flex items-center gap-1 mb-1">
+                <span className="text-xs font-bold text-slate-400 truncate">{gameState.teamNames[i]}</span>
+                {i === gameState.immunityTeam && <Badge className="bg-blue-500 text-white text-xs">Shield</Badge>}
+              </div>
+              <div className={`text-xl font-bold ${score >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {score > 0 ? "+" : ""}{score}
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        <Card className="bg-slate-800/30 border-slate-700 p-3 mb-4">
+          <div className="grid grid-cols-5 gap-2">
+            {gameState.tileUsed.map((used, i) => {
+              const type = tileTypes[i] || "normal";
+              const display = type === "boss" ? "☠" : type === "trap" ? "⚠" : type === "event" ? "★" : i + 1;
+
+              return (
+                <button
+                  key={i}
+                  onClick={() => selectTile(i)}
+                  disabled={used || gameState.roundLocked}
+                  className={`h-16 rounded-lg font-bold text-lg flex items-center justify-center transition-all ${
+                    used
+                      ? "bg-slate-700 text-slate-500 cursor-default"
+                      : type === "boss"
+                      ? "bg-gradient-to-b from-red-800 to-red-900 text-white hover:from-red-700 hover:to-red-800"
+                      : type === "trap"
+                      ? "bg-gradient-to-b from-yellow-500 to-yellow-600 text-black hover:from-yellow-400 hover:to-yellow-500"
+                      : type === "event"
+                      ? "bg-gradient-to-b from-cyan-500 to-cyan-600 text-white hover:from-cyan-400 hover:to-cyan-500"
+                      : "bg-gradient-to-b from-yellow-400 to-yellow-500 text-black hover:from-yellow-300 hover:to-yellow-400"
+                  } ${gameState.roundLocked && !used ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  {used ? i + 1 : display}
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card className="bg-slate-800/50 border-slate-700 p-4">
+          <div className="text-yellow-400 text-xs font-bold uppercase tracking-wider mb-2">
+            {gameState.categoryText || "SELECT A TILE"}
+          </div>
+
+          {gameState.roundLocked && (
+            <div className="mb-3">
+              <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
+                <div
+                  className="h-full transition-all duration-1000"
+                  style={{
+                    width: `${Math.max(0, (gameState.timeLeft / gameState.totalTime) * 100)}%`,
+                    background: gameState.timeLeft <= 10 ? "#ef4444" : "#22c55e",
+                  }}
+                />
+              </div>
+              <div className="flex items-center gap-1 mt-1 text-xs text-slate-400">
+                ⏱️ {gameState.timeLeft}s
+              </div>
+            </div>
+          )}
+
+          <div className="bg-slate-900 rounded-xl p-4 min-h-[100px] flex items-center justify-center text-center text-white mb-3">
+            {gameState.questionText}
+          </div>
+
+          {gameState.answerVisible && (
+            <div className="bg-slate-700/50 rounded-xl p-4 text-slate-200 mb-3">
+              {gameState.answerText}
+            </div>
+          )}
+
+          {gameState.resultText && (
+            <div className="text-center text-2xl font-bold text-yellow-400 mb-3">
+              {gameState.resultText}
+            </div>
+          )}
+
+          <div className="bg-slate-900/50 rounded-xl p-3 text-sm text-slate-300">
+            {gameState.eventBoxText}
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            {gameState.roundLocked && !gameState.answerVisible && (
+              <Button onClick={revealAnswer} className="bg-blue-600 hover:bg-blue-700 text-white">
+                Reveal Answer
+              </Button>
+            )}
+            {gameState.roundLocked && gameState.answerVisible && !gameState.currentRoundFinished && (
+              <Button onClick={() => setGameState(prev => ({ ...prev, currentRoundFinished: true, roundLocked: false }))} className="bg-green-600 hover:bg-green-700 text-white">
+                <SkipForward className="w-4 h-4 mr-1" /> Skip Timer
+              </Button>
+            )}
+            {gameState.currentRoundFinished && (
+              <Button onClick={nextTurn} className="bg-purple-600 hover:bg-purple-700 text-white">
+                <RotateCcw className="w-4 h-4 mr-1" /> Next Turn
+              </Button>
+            )}
+          </div>
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function TeacherHostPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
+      </div>
+    }>
+      <HostContent />
+    </Suspense>
   );
 }
