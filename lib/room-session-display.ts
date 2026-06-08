@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type RoomSnapshot = {
   id: string
+  code?: string
   status: string
   current_activity?: string | null
   active_activity_instance_id?: string | null
@@ -12,6 +13,12 @@ export type RoomSnapshotMap = Record<string, RoomSnapshot>
 export type ActivityInstanceSnapshot = {
   id: string
   status: string
+  activity_id?: string
+  started_at?: string
+}
+
+export type ClassRoomSnapshot = RoomSnapshot & {
+  created_at?: string
 }
 
 export type ActivityInstanceSnapshotMap = Record<string, ActivityInstanceSnapshot>
@@ -39,6 +46,31 @@ export async function fetchRoomsByIds(
   return map
 }
 
+/** Rooms attributed to a class (for analytics scope picker). Active rooms first. */
+export async function fetchClassRooms(
+  supabase: SupabaseClient,
+  classId: string
+): Promise<ClassRoomSnapshot[]> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('id, code, status, current_activity, active_activity_instance_id, created_at')
+    .eq('class_id', classId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('fetchClassRooms:', error.message)
+    return []
+  }
+
+  const rooms = (data || []) as ClassRoomSnapshot[]
+  return rooms.sort((a, b) => {
+    const aActive = a.status === 'active' ? 0 : 1
+    const bActive = b.status === 'active' ? 0 : 1
+    if (aActive !== bActive) return aActive - bActive
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+  })
+}
+
 export async function fetchActivityInstancesByIds(
   supabase: SupabaseClient,
   instanceIds: string[]
@@ -47,7 +79,7 @@ export async function fetchActivityInstancesByIds(
 
   const { data, error } = await supabase
     .from('activity_instances')
-    .select('id, status')
+    .select('id, status, activity_id, started_at')
     .in('id', instanceIds)
 
   if (error) {

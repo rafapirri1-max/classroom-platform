@@ -2,14 +2,22 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import {
+  filterAnswersBySessionIds,
+  filterSessionsByScope,
+  resolveActiveInstanceId,
+  type AnalyticsScopeFilter,
+} from '@/lib/analytics-scope'
 import { fetchClassGameSessions } from '@/lib/class-sessions'
 import { getHubProgressSummary } from '@/lib/mini-game-progress'
 import {
   fetchActivityInstancesByIds,
+  fetchClassRooms,
   fetchRoomsByIds,
   getHubSessionEndReason,
   isLiveHubInProgress,
   type ActivityInstanceSnapshotMap,
+  type ClassRoomSnapshot,
   type RoomSnapshotMap,
 } from '@/lib/room-session-display'
 import {
@@ -32,6 +40,9 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'overview' | 'student' | 'timeline'>('overview')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
+  const [scopeFilter, setScopeFilter] = useState<AnalyticsScopeFilter>('all')
+  const [classRooms, setClassRooms] = useState<ClassRoomSnapshot[]>([])
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
   const [showUnfinished, setShowUnfinished] = useState(true)
   const [roomsById, setRoomsById] = useState<RoomSnapshotMap>({})
   const [instancesById, setInstancesById] = useState<ActivityInstanceSnapshotMap>({})
@@ -73,16 +84,30 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
           .filter((id): id is string => Boolean(id))
       )
     )
+    const classRoomsList = await fetchClassRooms(supabase, classId)
     const roomMap = await fetchRoomsByIds(supabase, roomIds)
-    setRoomsById(roomMap)
+    const mergedRooms: RoomSnapshotMap = { ...roomMap }
+    for (const room of classRoomsList) {
+      mergedRooms[room.id] = room
+    }
+    setClassRooms(classRoomsList)
+    setSelectedRoomId((prev) => {
+      if (prev && classRoomsList.some((r) => r.id === prev)) return prev
+      return classRoomsList[0]?.id ?? null
+    })
+    setRoomsById(mergedRooms)
 
-    const instanceIds = Array.from(
+    const instanceIdsFromSessions = Array.from(
       new Set(
         sessions
           .map((s) => (s as { activity_instance_id?: string | null }).activity_instance_id)
           .filter((id): id is string => Boolean(id))
       )
     )
+    const activeInstanceIds = classRoomsList
+      .map((r) => r.active_activity_instance_id)
+      .filter((id): id is string => Boolean(id))
+    const instanceIds = Array.from(new Set([...instanceIdsFromSessions, ...activeInstanceIds]))
     const instanceMap = await fetchActivityInstancesByIds(supabase, instanceIds)
     setInstancesById(instanceMap)
 
@@ -103,9 +128,25 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
     setLoading(false)
   }
 
+  const selectedRoom =
+    classRooms.find((r) => r.id === selectedRoomId) ??
+    (selectedRoomId ? roomsById[selectedRoomId] : undefined)
+  const activeInstanceId = resolveActiveInstanceId(selectedRoom)
+  const launchScopeBlocked = scopeFilter === 'launch' && !activeInstanceId
+
+  const scopedSessions = launchScopeBlocked
+    ? []
+    : filterSessionsByScope(data.sessions, {
+        scope: scopeFilter,
+        roomId: selectedRoomId,
+        activeInstanceId,
+      })
+  const scopedSessionIds = new Set(scopedSessions.map((s) => (s as { id: string }).id))
+  const scopedAnswers = filterAnswersBySessionIds(data.answers, scopedSessionIds)
+
   const metrics = buildClassAnalyticsMetrics({
-    sessions: data.sessions as GameSessionRow[],
-    answers: data.answers,
+    sessions: scopedSessions as GameSessionRow[],
+    answers: scopedAnswers,
     dateFilter,
   })
 
@@ -146,6 +187,18 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
   const inProgressOnlyStudents = liveInProgressSessions.filter(
     (s) => !studentsWithCompleted.has(s.student_id)
   )
+
+  const activeLaunchInstance = activeInstanceId ? instancesById[activeInstanceId] : undefined
+  const scopeNeedsRoom = scopeFilter === 'room' || scopeFilter === 'launch'
+  const roomScopeBlocked = scopeNeedsRoom && classRooms.length === 0
+
+  function formatActivityLabel(activityId: string | null | undefined): string {
+    if (!activityId || activityId === 'waiting') return 'Waiting'
+    return activityId
+      .split('-')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+  }
 
   // Download CSV
   function downloadCSV(type: 'scores' | 'answers' | 'timeline') {
@@ -228,12 +281,43 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
           >
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
-          <select 
-            value={dateFilter} 
-            onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+          <select
+            value={scopeFilter}
+            onChange={(e) => setScopeFilter(e.target.value as AnalyticsScopeFilter)}
             className="bg-gray-700 text-white px-3 py-2 rounded-lg text-sm border border-gray-600"
+            aria-label="Analytics scope"
           >
             <option value="all">All Time</option>
+            <option value="room">Current Room</option>
+            <option value="launch">Current Launch</option>
+          </select>
+          {scopeNeedsRoom && (
+            <select
+              value={selectedRoomId ?? ''}
+              onChange={(e) => setSelectedRoomId(e.target.value || null)}
+              disabled={classRooms.length === 0}
+              className="bg-gray-700 text-white px-3 py-2 rounded-lg text-sm border border-gray-600 disabled:opacity-50"
+              aria-label="Select room"
+            >
+              {classRooms.length === 0 ? (
+                <option value="">No rooms</option>
+              ) : (
+                classRooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    Room {room.code}
+                    {room.status === 'active' ? ' · active' : ' · closed'}
+                  </option>
+                ))
+              )}
+            </select>
+          )}
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+            className="bg-gray-700 text-white px-3 py-2 rounded-lg text-sm border border-gray-600"
+            aria-label="Date range"
+          >
+            <option value="all">All dates</option>
             <option value="week">Last Week</option>
             <option value="month">Last Month</option>
             <option value="term">This Term</option>
@@ -255,6 +339,59 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
         </div>
       </div>
 
+      {scopeFilter !== 'all' && !roomScopeBlocked && !launchScopeBlocked && selectedRoom && (
+        <div className="bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-300">
+          {scopeFilter === 'room' && (
+            <>
+              <span className="font-medium text-white">Room {selectedRoom.code}</span>
+              <span className="text-gray-500"> · </span>
+              <span className={selectedRoom.status === 'active' ? 'text-green-400' : 'text-gray-400'}>
+                {selectedRoom.status === 'active' ? 'Active' : 'Closed'}
+              </span>
+              {selectedRoom.current_activity && selectedRoom.current_activity !== 'waiting' && (
+                <>
+                  <span className="text-gray-500"> · </span>
+                  <span>{formatActivityLabel(selectedRoom.current_activity)}</span>
+                </>
+              )}
+            </>
+          )}
+          {scopeFilter === 'launch' && activeLaunchInstance && (
+            <>
+              <span className="font-medium text-white">Current launch</span>
+              <span className="text-gray-500"> · </span>
+              <span>{formatActivityLabel(activeLaunchInstance.activity_id)}</span>
+              {activeLaunchInstance.started_at && (
+                <>
+                  <span className="text-gray-500"> · </span>
+                  <span>started {new Date(activeLaunchInstance.started_at).toLocaleString()}</span>
+                </>
+              )}
+              <span className="text-gray-500"> · </span>
+              <span className="text-green-400">Live</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {roomScopeBlocked && (
+        <div className="bg-gray-800 border border-gray-700 rounded-xl px-4 py-6 text-center text-gray-400">
+          <p className="font-medium text-white mb-1">No rooms for this class</p>
+          <p className="text-sm">Start a live room from this class to filter analytics by room or launch.</p>
+        </div>
+      )}
+
+      {launchScopeBlocked && !roomScopeBlocked && selectedRoom && (
+        <div className="bg-gray-800 border border-amber-900/40 rounded-xl px-4 py-6 text-center">
+          <p className="font-medium text-amber-200 mb-1">No active launch in Room {selectedRoom.code}</p>
+          <p className="text-sm text-gray-400">
+            Launch an activity in this room to view the current launch, or switch scope to All Time or Current Room.
+          </p>
+        </div>
+      )}
+
+      {!roomScopeBlocked && !launchScopeBlocked && (
+        <>
       {/* Overview Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-gray-700/50 rounded-xl p-4 text-center">
@@ -670,7 +807,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
           )}
 
           {/* Answers Breakdown */}
-          {data.answers.filter((a) =>
+          {scopedAnswers.filter((a) =>
             selectedStudentTimeline.some((s) => s.id === a.session_id)
           ).length > 0 && (
             <div className="bg-gray-800 rounded-xl overflow-hidden">
@@ -678,7 +815,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
                 <h4 className="font-semibold">Answer Breakdown</h4>
               </div>
               <div className="p-4 space-y-2 max-h-96 overflow-y-auto">
-                {data.answers
+                {scopedAnswers
                   .filter((a: any) => selectedStudentTimeline.some((s: any) => s.id === a.session_id))
                   .map((answer: any, i: number) => (
                     <div key={i} className={`p-3 rounded-lg ${answer.is_correct ? 'bg-green-900/20 border border-green-800' : 'bg-red-900/20 border border-red-800'}`}>
@@ -696,6 +833,9 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
             </div>
           )}
         </div>
+      )}
+
+        </>
       )}
     </div>
   )
