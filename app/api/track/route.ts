@@ -22,27 +22,44 @@ export async function POST(request: NextRequest) {
           room_code,
           room_id,
           class_id: classIdFromClient,
+          activity_instance_id: activityInstanceFromClient,
           force_new: forceNew,
         } = data
 
         let class_id: string | null = classIdFromClient ?? null
-        if (!class_id && room_id) {
+        let activity_instance_id: string | null = activityInstanceFromClient ?? null
+        if (room_id) {
           const { data: room } = await supabase
             .from('rooms')
-            .select('class_id')
+            .select('class_id, active_activity_instance_id')
             .eq('id', room_id)
             .maybeSingle()
-          class_id = room?.class_id ?? null
+          if (!class_id) class_id = room?.class_id ?? null
+          if (!activity_instance_id) {
+            activity_instance_id = room?.active_activity_instance_id ?? null
+          }
         }
 
-        if (!forceNew && student_id && room_id && game_type) {
-          const existingId = await findReusableOpenSession(supabase, {
-            student_id,
-            room_id,
-            game_type,
-          })
-          if (existingId) {
-            return NextResponse.json({ success: true, session_id: existingId, reused: true })
+        if (!forceNew && student_id) {
+          if (activity_instance_id) {
+            const existingId = await findReusableOpenSession(supabase, {
+              student_id,
+              room_id,
+              game_type,
+              activity_instance_id,
+            })
+            if (existingId) {
+              return NextResponse.json({ success: true, session_id: existingId, reused: true })
+            }
+          } else if (room_id && game_type) {
+            const existingId = await findReusableOpenSession(supabase, {
+              student_id,
+              room_id,
+              game_type,
+            })
+            if (existingId) {
+              return NextResponse.json({ success: true, session_id: existingId, reused: true })
+            }
           }
         }
 
@@ -55,6 +72,7 @@ export async function POST(request: NextRequest) {
             room_code,
             room_id: room_id ?? null,
             class_id,
+            activity_instance_id,
           })
           .select()
           .single()

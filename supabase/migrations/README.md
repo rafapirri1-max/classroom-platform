@@ -10,3 +10,13 @@ Adds optional links between live rooms, classes, and analytics:
 - `game_sessions.room_id`, `game_sessions.class_id`
 
 Existing rows are unchanged (columns default to `NULL`).
+
+## Phase 1 — `20250605100000_activity_instances_phase1.sql`
+
+Adds the runtime layer linking teacher launches to student sessions:
+
+- `activity_instances` table
+- `rooms.active_activity_instance_id`
+- `game_sessions.activity_instance_id`
+
+Existing `game_sessions` rows keep `activity_instance_id = NULL` and remain visible in analytics.

@@ -13,6 +13,7 @@ export type RoomRunContext = {
   status?: string
   class_id?: string | null
   current_activity?: string | null
+  active_activity_instance_id?: string | null
 }
 
 export type TrackCaller = (
@@ -27,8 +28,13 @@ export type BeginRunResult = {
 
 const inFlightStarts = new Map<string, Promise<string | null>>()
 
-function inFlightKey(roomId: string, activityId: string, forceNew: boolean) {
-  return `${roomId}:${activityId}:${forceNew ? 'new' : 'reuse'}`
+function inFlightKey(
+  roomId: string,
+  activityId: string,
+  activityInstanceId: string | null | undefined,
+  forceNew: boolean
+) {
+  return `${roomId}:${activityId}:${activityInstanceId ?? 'none'}:${forceNew ? 'new' : 'reuse'}`
 }
 
 export function clearRunOnTeacherWaiting(roomId: string): void {
@@ -42,6 +48,7 @@ async function callStartSession(
   callTrack: TrackCaller,
   forceNew: boolean
 ): Promise<string | null> {
+  const activityInstanceId = room.active_activity_instance_id ?? null
   const { ok, json } = await callTrack('start_session', {
     student_id: studentId,
     game_type: activityId,
@@ -49,11 +56,12 @@ async function callStartSession(
     room_code: room.code,
     room_id: room.id,
     class_id: room.class_id ?? null,
+    activity_instance_id: activityInstanceId,
     force_new: forceNew,
   })
 
   if (ok && typeof json.session_id === 'string') {
-    writeStoredRunSessionId(room.id, activityId, json.session_id)
+    writeStoredRunSessionId(room.id, activityId, json.session_id, activityInstanceId)
     return json.session_id
   }
   return null
@@ -75,16 +83,18 @@ export async function beginOrRestoreRun(options: {
     return { sessionId: null, restored: false }
   }
 
+  const activityInstanceId = room.active_activity_instance_id ?? null
+
   if (forceNew) {
-    clearStoredRun(room.id, activityId)
+    clearStoredRun(room.id, activityId, activityInstanceId)
   } else {
-    const stored = readOpenStoredRunSessionId(room.id, activityId)
+    const stored = readOpenStoredRunSessionId(room.id, activityId, activityInstanceId)
     if (stored) {
       return { sessionId: stored, restored: true }
     }
   }
 
-  const flightKey = inFlightKey(room.id, activityId, forceNew)
+  const flightKey = inFlightKey(room.id, activityId, activityInstanceId, forceNew)
   const existing = inFlightStarts.get(flightKey)
   if (existing) {
     const sessionId = await existing
@@ -121,7 +131,7 @@ export async function handleRoomActivityUpdate(options: {
     return null
   }
 
-  clearStoredRun(room.id, nextActivity)
+  clearStoredRun(room.id, nextActivity, room.active_activity_instance_id)
 
   return beginOrRestoreRun({
     room,

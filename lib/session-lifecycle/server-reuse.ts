@@ -7,22 +7,31 @@ export async function findReusableOpenSession(
     student_id: string
     room_id: string
     game_type: string
+    activity_instance_id?: string | null
   }
 ): Promise<string | null> {
-  const { student_id, room_id, game_type } = params
+  const { student_id, room_id, game_type, activity_instance_id } = params
   const cutoff = new Date(Date.now() - OPEN_SESSION_MAX_AGE_MS).toISOString()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('game_sessions')
     .select('id')
     .eq('student_id', student_id)
-    .eq('room_id', room_id)
-    .eq('game_type', game_type)
     .or('completed.is.null,completed.eq.false')
     .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
     .limit(1)
-    .maybeSingle()
+
+  if (activity_instance_id) {
+    query = query.eq('activity_instance_id', activity_instance_id)
+  } else {
+    query = query
+      .eq('room_id', room_id)
+      .eq('game_type', game_type)
+      .is('activity_instance_id', null)
+  }
+
+  const { data, error } = await query.maybeSingle()
 
   if (error) {
     console.error('findReusableOpenSession:', error.message)

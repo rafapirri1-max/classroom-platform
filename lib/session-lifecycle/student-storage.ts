@@ -6,8 +6,13 @@ type StoredRun = {
   open: boolean
 }
 
-export function runStorageKey(roomId: string, activityId: string): string {
-  return `${SESSION_STORAGE_PREFIX}:${roomId}:${activityId}`
+export function runStorageKey(
+  roomId: string,
+  activityId: string,
+  activityInstanceId?: string | null
+): string {
+  const base = `${SESSION_STORAGE_PREFIX}:${roomId}:${activityId}`
+  return activityInstanceId ? `${base}:${activityInstanceId}` : base
 }
 
 function parseStoredRun(raw: string | null): StoredRun | null {
@@ -25,34 +30,68 @@ function parseStoredRun(raw: string | null): StoredRun | null {
 /** Open (incomplete) run only — never restore a completed attempt from storage. */
 export function readOpenStoredRunSessionId(
   roomId: string,
-  activityId: string
+  activityId: string,
+  activityInstanceId?: string | null
 ): string | null {
   if (typeof window === 'undefined') return null
-  const stored = parseStoredRun(sessionStorage.getItem(runStorageKey(roomId, activityId)))
-  return stored?.open ? stored.sessionId : null
+  if (activityInstanceId) {
+    const stored = parseStoredRun(
+      sessionStorage.getItem(runStorageKey(roomId, activityId, activityInstanceId))
+    )
+    if (stored?.open) return stored.sessionId
+  }
+  const legacy = parseStoredRun(sessionStorage.getItem(runStorageKey(roomId, activityId)))
+  return legacy?.open ? legacy.sessionId : null
 }
 
 export function writeStoredRunSessionId(
   roomId: string,
   activityId: string,
-  sessionId: string
+  sessionId: string,
+  activityInstanceId?: string | null
 ): void {
   if (typeof window === 'undefined') return
   const payload: StoredRun = { sessionId, open: true }
-  sessionStorage.setItem(runStorageKey(roomId, activityId), JSON.stringify(payload))
+  sessionStorage.setItem(
+    runStorageKey(roomId, activityId, activityInstanceId),
+    JSON.stringify(payload)
+  )
 }
 
-export function markStoredRunCompleted(roomId: string, activityId: string): void {
+export function markStoredRunCompleted(
+  roomId: string,
+  activityId: string,
+  activityInstanceId?: string | null
+): void {
   if (typeof window === 'undefined') return
-  const key = runStorageKey(roomId, activityId)
-  const stored = parseStoredRun(sessionStorage.getItem(key))
-  if (!stored) return
-  sessionStorage.setItem(key, JSON.stringify({ ...stored, open: false }))
+  const keys = [
+    runStorageKey(roomId, activityId, activityInstanceId),
+    runStorageKey(roomId, activityId),
+  ]
+  for (const key of keys) {
+    const stored = parseStoredRun(sessionStorage.getItem(key))
+    if (!stored) continue
+    sessionStorage.setItem(key, JSON.stringify({ ...stored, open: false }))
+  }
 }
 
-export function clearStoredRun(roomId: string, activityId: string): void {
+export function clearStoredRun(
+  roomId: string,
+  activityId: string,
+  activityInstanceId?: string | null
+): void {
   if (typeof window === 'undefined') return
-  sessionStorage.removeItem(runStorageKey(roomId, activityId))
+  const prefix = `${SESSION_STORAGE_PREFIX}:${roomId}:${activityId}`
+  sessionStorage.removeItem(prefix)
+  if (activityInstanceId) {
+    sessionStorage.removeItem(`${prefix}:${activityInstanceId}`)
+  }
+  const keysToRemove: string[] = []
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i)
+    if (key?.startsWith(`${prefix}:`)) keysToRemove.push(key)
+  }
+  keysToRemove.forEach((key) => sessionStorage.removeItem(key))
 }
 
 export function clearStoredRunsForRoom(roomId: string): void {

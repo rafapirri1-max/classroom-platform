@@ -5,9 +5,11 @@ import { supabase } from '@/lib/supabase'
 import { fetchClassGameSessions } from '@/lib/class-sessions'
 import { getHubProgressSummary } from '@/lib/mini-game-progress'
 import {
+  fetchActivityInstancesByIds,
   fetchRoomsByIds,
   getHubSessionEndReason,
   isLiveHubInProgress,
+  type ActivityInstanceSnapshotMap,
   type RoomSnapshotMap,
 } from '@/lib/room-session-display'
 import {
@@ -32,6 +34,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [showUnfinished, setShowUnfinished] = useState(true)
   const [roomsById, setRoomsById] = useState<RoomSnapshotMap>({})
+  const [instancesById, setInstancesById] = useState<ActivityInstanceSnapshotMap>({})
 
   useEffect(() => {
     loadAnalytics()
@@ -72,6 +75,16 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
     )
     const roomMap = await fetchRoomsByIds(supabase, roomIds)
     setRoomsById(roomMap)
+
+    const instanceIds = Array.from(
+      new Set(
+        sessions
+          .map((s) => (s as { activity_instance_id?: string | null }).activity_instance_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    )
+    const instanceMap = await fetchActivityInstancesByIds(supabase, instanceIds)
+    setInstancesById(instanceMap)
 
     // Get answers ONLY for sessions from students in this class
     const sessionIds = sessions?.map(s => s.id) || []
@@ -122,7 +135,9 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
     : []
 
   const liveInProgressSessions = unfinishedSessions.filter(
-    (s) => getHubProgressSummary(s.raw_data) && isLiveHubInProgress(s, roomsById)
+    (s) =>
+      getHubProgressSummary(s.raw_data) &&
+      isLiveHubInProgress(s, roomsById, instancesById)
   )
   const overviewUnfinishedCount =
     liveInProgressSessions.length +
@@ -621,8 +636,10 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
                   </thead>
                   <tbody className="divide-y divide-gray-700">
                     {selectedStudentUnfinished.map((session) => {
-                      const live = isLiveHubInProgress(session, roomsById)
-                      const endReason = live ? '' : getHubSessionEndReason(session, roomsById)
+                      const live = isLiveHubInProgress(session, roomsById, instancesById)
+                      const endReason = live
+                        ? ''
+                        : getHubSessionEndReason(session, roomsById, instancesById)
                       return (
                       <tr key={session.id} className="align-top">
                         <td className="px-4 py-3 text-sm">

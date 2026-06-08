@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { closeRoomWithInstances, launchRoomActivity } from '@/lib/activity-instances'
 import { activityToLaunchCard } from '@/lib/activity-engine/adapters/game-json'
 import type { ActivityLaunchCard } from '@/lib/activity-engine/types'
 import { supabase } from '@/lib/supabase'
@@ -77,15 +78,24 @@ export default function TeacherRoomPage() {
   }, [roomId, loadRoom, loadParticipants, loadActivities])
 
   async function launchActivity(gameId: string) {
-    // Briefly set waiting so re-launching the same game still triggers a new attempt
-    if (room?.current_activity === gameId && gameId !== 'waiting') {
-      await supabase.from('rooms').update({ current_activity: 'waiting' }).eq('id', roomId)
+    if (!room) return
+    try {
+      await launchRoomActivity(supabase, room, gameId)
+      await loadRoom()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to launch activity'
+      alert(message)
     }
-    await supabase.from('rooms').update({ current_activity: gameId }).eq('id', roomId)
   }
 
   async function closeRoom() {
-    await supabase.from('rooms').update({ status: 'closed' }).eq('id', roomId)
+    try {
+      await closeRoomWithInstances(supabase, roomId, room?.active_activity_instance_id)
+      await loadRoom()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to close room'
+      alert(message)
+    }
   }
 
   // KICK OUT STUDENT

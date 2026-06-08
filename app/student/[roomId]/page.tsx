@@ -301,7 +301,11 @@ function StudentContent() {
 
       sessionOpenRef.current = false
       if (room?.id && room.current_activity) {
-        markStoredRunCompleted(room.id, room.current_activity)
+        markStoredRunCompleted(
+          room.id,
+          room.current_activity,
+          room.active_activity_instance_id
+        )
       }
 
       setSubmissionOk(true)
