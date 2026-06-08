@@ -1,6 +1,6 @@
 # Milestone: Session Lifecycle Cleanup
 
-**Status:** Planned (not started)  
+**Status:** Implemented (PR A + PR B)  
 **Depends on:** Phase 0 (class–room–session attribution) — complete  
 **Out of scope for Phase 0:** Session lifecycle, deduplication, analytics filtering
 

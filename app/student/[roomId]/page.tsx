@@ -2,13 +2,20 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
+import {
+  beginOrRestoreRun,
+  handleJoinActiveActivity,
+  handleRoomActivityUpdate,
+  isTrackableActivity,
+  markStoredRunCompleted,
+  shouldStartRunFromRoomUpdate,
+  type BeginRunResult,
+  type RoomRunContext,
+  type TrackCaller,
+} from '@/lib/session-lifecycle'
 import { supabase, getUserProfile } from '@/lib/supabase'
 
-function isTrackableGame(activity: string | null | undefined): boolean {
-  return !!activity && activity !== 'waiting' && activity !== 'poll' && activity !== 'wordcloud'
-}
-
-async function callTrack(action: string, data: Record<string, unknown>) {
+const callTrack: TrackCaller = async (action, data) => {
   const res = await fetch('/api/track', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -24,7 +31,7 @@ function StudentContent() {
   const roomId = params.roomId as string
   const name = searchParams.get('name') || 'Student'
 
-  const [room, setRoom] = useState<any>(null)
+  const [room, setRoom] = useState<RoomRunContext | null>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<any>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -38,6 +45,7 @@ function StudentContent() {
   const gameAttemptKeyRef = useRef(0)
   const sessionForAttemptRef = useRef<number | null>(null)
   const beganAttemptForActivityRef = useRef<string | null>(null)
+  const sessionOpenRef = useRef(false)
 
   useEffect(() => {
     profileRef.current = profile
@@ -49,67 +57,71 @@ function StudentContent() {
 
   const loadRoom = useCallback(async () => {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
-    if (data) setRoom(data)
-    return data
+    if (data) setRoom(data as RoomRunContext)
+    return data as RoomRunContext | null
   }, [roomId])
-
-  const startSessionForActivity = useCallback(async (activity: string, roomData: { code: string; id: string; class_id?: string | null }) => {
-    const studentId = profileRef.current?.id
-    if (!studentId || !isTrackableGame(activity)) return null
-
-    const { ok, json } = await callTrack('start_session', {
-      student_id: studentId,
-      game_type: activity,
-      mode: 'room',
-      room_code: roomData.code,
-      room_id: roomData.id,
-      class_id: roomData.class_id ?? null,
-    })
-
-    if (ok && json.session_id) {
-      setSessionId(json.session_id)
-      sessionIdRef.current = json.session_id
-      sessionForAttemptRef.current = gameAttemptKeyRef.current
-      return json.session_id as string
-    }
-    return null
-  }, [])
 
   const resetSubmissionState = useCallback(() => {
     setSubmissionStatus('')
     setSubmissionOk(false)
   }, [])
 
-  const beginNewGameAttempt = useCallback(async (roomData: any) => {
-    const activity = roomData?.current_activity
-    if (!isTrackableGame(activity) || !profileRef.current?.id) return
+  const applyRunResult = useCallback(
+    (result: BeginRunResult, activityId: string) => {
+      if (!result.sessionId) return
+      const previousSessionId = sessionIdRef.current
+      if (result.sessionId !== previousSessionId || !result.restored) {
+        gameAttemptKeyRef.current += 1
+        setGameAttemptKey(gameAttemptKeyRef.current)
+        resetSubmissionState()
+      }
+      setSessionId(result.sessionId)
+      sessionIdRef.current = result.sessionId
+      sessionForAttemptRef.current = gameAttemptKeyRef.current
+      beganAttemptForActivityRef.current = activityId
+      sessionOpenRef.current = true
+    },
+    [resetSubmissionState]
+  )
 
-    gameAttemptKeyRef.current += 1
-    setGameAttemptKey(gameAttemptKeyRef.current)
+  const clearRunRefs = useCallback(() => {
     resetSubmissionState()
+    beganAttemptForActivityRef.current = null
     setSessionId(null)
     sessionIdRef.current = null
     sessionForAttemptRef.current = null
-    beganAttemptForActivityRef.current = activity
+    sessionOpenRef.current = false
+  }, [resetSubmissionState])
 
-    await startSessionForActivity(activity, roomData)
-  }, [resetSubmissionState, startSessionForActivity])
+  const ensureSessionForCurrentAttempt = useCallback(async (roomData: RoomRunContext) => {
+    const activityId = roomData?.current_activity
+    const studentId = profileRef.current?.id
+    if (!activityId || !isTrackableActivity(activityId) || !studentId) return null
 
-  const ensureSessionForCurrentAttempt = useCallback(async (roomData: any) => {
-    const activity = roomData?.current_activity
-    if (!isTrackableGame(activity) || !profileRef.current?.id) return null
     if (
+      sessionOpenRef.current &&
       sessionForAttemptRef.current === gameAttemptKeyRef.current &&
       sessionIdRef.current
     ) {
       return sessionIdRef.current
     }
-    return startSessionForActivity(activity, roomData)
-  }, [startSessionForActivity])
+
+    const result = await beginOrRestoreRun({
+      room: roomData,
+      activityId,
+      studentId,
+      callTrack,
+      forceNew: false,
+    })
+    if (result.sessionId) {
+      applyRunResult(result, activityId)
+    }
+    return result.sessionId
+  }, [applyRunResult])
 
   useEffect(() => {
     loadRoom().then(() => setLoading(false))
-    getUserProfile().then(async prof => {
+    getUserProfile().then(async (prof) => {
       setProfile(prof)
       if (!prof?.id) {
         setEnrolledInClass(null)
@@ -123,77 +135,153 @@ function StudentContent() {
     })
 
     const channel = supabase.channel(`student-room-${roomId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, async (payload) => {
-        setRoom(payload.new)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+        async (payload) => {
+          const roomData = payload.new as RoomRunContext
+          setRoom(roomData)
 
-        const activity = payload.new.current_activity
-        const prevActivity = payload.old?.current_activity
+          const studentId = profileRef.current?.id
+          if (!studentId) return
 
-        if (activity === 'waiting' && isTrackableGame(prevActivity)) {
-          resetSubmissionState()
-          beganAttemptForActivityRef.current = null
+          const prevActivity = payload.old?.current_activity
+          const nextActivity = roomData.current_activity
+
+          const priorRunOpen = sessionOpenRef.current
+
+          if (
+            isTrackableActivity(nextActivity) &&
+            shouldStartRunFromRoomUpdate(prevActivity, nextActivity, priorRunOpen) &&
+            !priorRunOpen
+          ) {
+            clearRunRefs()
+          }
+
+          const outcome = await handleRoomActivityUpdate({
+            room: roomData,
+            prevActivity,
+            nextActivity,
+            studentId,
+            callTrack,
+            priorRunOpen,
+          })
+
+          if (outcome === 'cleared') {
+            clearRunRefs()
+            return
+          }
+
+          if (outcome && outcome.sessionId && roomData.current_activity) {
+            applyRunResult(outcome, roomData.current_activity)
+          }
         }
-
-        if (isTrackableGame(activity) && activity !== prevActivity) {
-          await beginNewGameAttempt(payload.new)
-        }
-      })
+      )
       .subscribe()
 
-    return () => { channel.unsubscribe() }
-  }, [roomId, loadRoom, beginNewGameAttempt, resetSubmissionState])
+    return () => {
+      channel.unsubscribe()
+    }
+  }, [roomId, loadRoom, applyRunResult, clearRunRefs])
 
-  // Start a new attempt when joining a room that already has an active game
   useEffect(() => {
     if (!room || !profile?.id) return
-    const activity = room.current_activity
-    if (!isTrackableGame(activity)) return
-    if (beganAttemptForActivityRef.current === activity && sessionIdRef.current) return
-    beginNewGameAttempt(room)
-  }, [room, profile, beginNewGameAttempt])
+    const activityId = room.current_activity
+    if (!isTrackableActivity(activityId) || !activityId) return
+    if (
+      beganAttemptForActivityRef.current === activityId &&
+      sessionIdRef.current &&
+      sessionOpenRef.current
+    ) {
+      return
+    }
+
+    void (async () => {
+      const result = await handleJoinActiveActivity({
+        room,
+        studentId: profile.id,
+        callTrack,
+      })
+      if (result?.sessionId) {
+        applyRunResult(result, activityId)
+      }
+    })()
+  }, [room, profile, applyRunResult])
 
   useEffect(() => {
+    const resolveActiveSession = async (): Promise<string | null> => {
+      let activeSessionId = sessionOpenRef.current ? sessionIdRef.current : null
+      if (!activeSessionId && room) {
+        activeSessionId = await ensureSessionForCurrentAttempt(room)
+      }
+      return activeSessionId
+    }
+
+    const recordAnswers = async (sessionId: string, answers: Record<string, unknown>[]) => {
+      for (const answer of answers) {
+        const { ok, json } = await callTrack('record_answer', {
+          session_id: sessionId,
+          ...answer,
+        })
+        if (!ok) {
+          setSubmissionStatus(`Error saving answers: ${json.error || 'Unknown error'}`)
+          return false
+        }
+      }
+      return true
+    }
+
     const handleMessage = async (event: MessageEvent) => {
-      if (event.data?.type !== 'GAME_SUBMIT') return
+      const messageType = event.data?.type
+      if (messageType !== 'GAME_MINI_COMPLETE' && messageType !== 'GAME_SUBMIT') return
 
-      setSubmissionStatus('Submitting...')
-      setSubmissionOk(false)
-
-      let activeSessionId = sessionIdRef.current
       const studentId = profileRef.current?.id
-
       if (!studentId) {
         setSubmissionStatus('Error: Sign in to submit answers to your teacher.')
         return
       }
 
-      if (!activeSessionId && room) {
-        activeSessionId = await ensureSessionForCurrentAttempt(room)
-      }
-
+      const activeSessionId = await resolveActiveSession()
       if (!activeSessionId) {
         setSubmissionStatus('Error: No active session. Ask your teacher to launch the game again.')
         return
       }
 
       const payload = event.data.data || {}
-      const quizAnswers = payload.quiz_answers || []
-      const scenarioAnswers = payload.scenario_answers || []
 
-      for (const answer of quizAnswers) {
-        const { ok, json } = await callTrack('record_answer', { session_id: activeSessionId, ...answer })
+      if (messageType === 'GAME_MINI_COMPLETE') {
+        const { ok, json } = await callTrack('update_progress', {
+          session_id: activeSessionId,
+          activity_id: payload.activity_id || room?.current_activity,
+          required_mini_game_ids: payload.required_mini_game_ids,
+          mini_game: payload.mini_game,
+        })
         if (!ok) {
-          setSubmissionStatus(`Error saving answers: ${json.error || 'Unknown error'}`)
+          setSubmissionStatus(`Error saving progress: ${json.error || 'Unknown error'}`)
           return
         }
+
+        const answers = payload.answers || []
+        if (answers.length > 0) {
+          const recorded = await recordAnswers(activeSessionId, answers)
+          if (!recorded) return
+        }
+
+        setSubmissionOk(false)
+        setSubmissionStatus(
+          `Progress saved: ${payload.mini_game?.miniGameName || 'mini-game'} ✓`
+        )
+        return
       }
 
-      for (const answer of scenarioAnswers) {
-        const { ok, json } = await callTrack('record_answer', { session_id: activeSessionId, ...answer })
-        if (!ok) {
-          setSubmissionStatus(`Error saving answers: ${json.error || 'Unknown error'}`)
-          return
-        }
+      setSubmissionStatus('Submitting...')
+      setSubmissionOk(false)
+
+      const quizAnswers = payload.quiz_answers || []
+      const scenarioAnswers = payload.scenario_answers || []
+      if (quizAnswers.length > 0 || scenarioAnswers.length > 0) {
+        const recorded = await recordAnswers(activeSessionId, [...quizAnswers, ...scenarioAnswers])
+        if (!recorded) return
       }
 
       const { ok, json } = await callTrack('end_session', {
@@ -203,6 +291,7 @@ function StudentContent() {
         accuracy_percent: payload.accuracy_percent,
         time_spent_seconds: payload.time_spent_seconds,
         completed: true,
+        badges: payload.badges,
       })
 
       if (!ok) {
@@ -210,8 +299,13 @@ function StudentContent() {
         return
       }
 
+      sessionOpenRef.current = false
+      if (room?.id && room.current_activity) {
+        markStoredRunCompleted(room.id, room.current_activity)
+      }
+
       setSubmissionOk(true)
-      setSubmissionStatus('Answers submitted to teacher!')
+      setSubmissionStatus('Bias Detective complete — results sent to your teacher!')
     }
 
     window.addEventListener('message', handleMessage)
@@ -239,7 +333,7 @@ function StudentContent() {
   }
 
   const activity = room.current_activity || 'waiting'
-  const isGame = activity !== 'waiting' && activity !== 'poll' && activity !== 'wordcloud'
+  const showTrackedIframe = isTrackableActivity(activity)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950">
@@ -250,17 +344,23 @@ function StudentContent() {
 
       {profile && enrolledInClass === false && (
         <div className="bg-amber-500/20 border-b border-amber-500/50 text-amber-100 px-4 py-2 text-center text-sm">
-          You are signed in but not enrolled in a class. Your teacher may not see your results in class analytics until you join using their class code on the{' '}
-          <a href="/" className="underline font-medium text-amber-200 hover:text-white">student home page</a>.
+          You are signed in but not enrolled in a class. Your teacher may not see your results in class
+          analytics until you join using their class code on the{' '}
+          <a href="/" className="underline font-medium text-amber-200 hover:text-white">
+            student home page
+          </a>
+          .
         </div>
       )}
 
       {submissionStatus && (
-        <div className={`px-4 py-2 text-center border ${
-          submissionOk
-            ? 'bg-green-500/20 border-green-500/50 text-green-300'
-            : 'bg-red-500/20 border-red-500/50 text-red-300'
-        }`}>
+        <div
+          className={`px-4 py-2 text-center border ${
+            submissionOk
+              ? 'bg-green-500/20 border-green-500/50 text-green-300'
+              : 'bg-red-500/20 border-red-500/50 text-red-300'
+          }`}
+        >
           {submissionStatus}
         </div>
       )}
@@ -276,7 +376,7 @@ function StudentContent() {
           </div>
         )}
 
-        {isGame && (
+        {showTrackedIframe && (
           <div className="h-[calc(100vh-60px)]">
             <iframe
               key={`${activity}-${gameAttemptKey}`}
@@ -292,7 +392,10 @@ function StudentContent() {
             <h2 className="text-xl font-bold text-white mb-6 text-center">📊 Quick Poll</h2>
             <div className="space-y-3">
               {['Option A', 'Option B', 'Option C', 'Option D'].map((opt) => (
-                <button key={opt} className="w-full p-4 bg-white/10 rounded-xl text-white font-semibold hover:bg-white/20 transition-colors border border-white/20">
+                <button
+                  key={opt}
+                  className="w-full p-4 bg-white/10 rounded-xl text-white font-semibold hover:bg-white/20 transition-colors border border-white/20"
+                >
                   {opt}
                 </button>
               ))}
@@ -305,8 +408,15 @@ function StudentContent() {
             <h2 className="text-xl font-bold text-white mb-2 text-center">☁️ Word Cloud</h2>
             <p className="text-indigo-200 text-center mb-6">Type one word that comes to mind</p>
             <div className="flex gap-2">
-              <input type="text" placeholder="Enter a word..." maxLength={20} className="flex-1 px-4 py-3 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-accent" />
-              <button className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:opacity-90">Submit</button>
+              <input
+                type="text"
+                placeholder="Enter a word..."
+                maxLength={20}
+                className="flex-1 px-4 py-3 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-accent"
+              />
+              <button className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:opacity-90">
+                Submit
+              </button>
             </div>
           </div>
         )}
@@ -317,11 +427,13 @@ function StudentContent() {
 
 export default function StudentPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950 flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950 flex items-center justify-center">
+          <div className="text-white text-xl">Loading...</div>
+        </div>
+      }
+    >
       <StudentContent />
     </Suspense>
   )

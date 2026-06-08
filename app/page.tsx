@@ -241,7 +241,10 @@ function HomeContent() {
         )}
 
         <div className="text-center">
-          <a href="/login" className="text-sm text-gray-500 hover:text-gray-400 transition">
+          <a
+            href={profile?.role === 'teacher' ? '/teacher' : '/teacher/login'}
+            className="text-sm text-gray-500 hover:text-gray-400 transition"
+          >
             Are you a teacher? Login here →
           </a>
         </div>

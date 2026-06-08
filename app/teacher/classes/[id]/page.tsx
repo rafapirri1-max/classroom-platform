@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase, getUserProfile } from '@/lib/supabase'
 import { fetchClassGameSessions } from '@/lib/class-sessions'
+import { isSessionCompleted, partitionSessions } from '@/lib/session-lifecycle'
 import { createTeacherRoom } from '@/lib/rooms'
 import ClassAnalytics from './analytics'
+import { HubMiniGameList, HubProgressBar, HubProgressLabel } from './hub-progress'
 
 export default function ClassDetail() {
   const params = useParams()
@@ -50,6 +52,7 @@ export default function ClassDetail() {
     const sess = await fetchClassGameSessions(supabase, {
       classId,
       classStudentIds,
+      select: '*, students(name, email)',
     })
 
     setSessions(sess)
@@ -232,38 +235,90 @@ export default function ClassDetail() {
           </div>
         )}
 
-        {activeTab === 'sessions' && (
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Game Sessions ({sessions.length})</h2>
-            {sessions.length === 0 ? (
-              <div className="bg-gray-800 rounded-xl p-8 text-center">
-                <div className="text-5xl mb-4">🎮</div>
-                <p className="text-gray-400">No sessions yet.</p>
-                <p className="text-sm text-gray-500 mt-2">Students will appear here after playing games.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {sessions.map((sess) => (
-                  <div key={sess.id} className="bg-gray-800 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{sess.game_type} — {sess.mode}</div>
-                      <div className="text-sm text-gray-500">{new Date(sess.created_at).toLocaleString()}</div>
+        {activeTab === 'sessions' && (() => {
+          const { completed, unfinished } = partitionSessions(sessions)
+          const renderSession = (sess: (typeof sessions)[0], statusLabel: string, statusClass: string) => {
+            const isCompleted = isSessionCompleted(sess)
+            return (
+              <div key={sess.id} className="bg-gray-800 rounded-lg p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">
+                      {sess.students?.name ? `${sess.students.name} · ` : ''}
+                      {sess.game_type} — {sess.mode}
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="text-sm">Score: <span className="text-green-400">{sess.score}</span></div>
-                        <div className="text-xs text-gray-500">{sess.accuracy_percent}% accuracy</div>
-                      </div>
-                      <div className={`px-2 py-1 rounded text-xs ${sess.completed ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300'}`}>
-                        {sess.completed ? 'Completed' : 'In Progress'}
-                      </div>
+                    <div className="text-sm text-gray-500">
+                      {new Date(sess.created_at).toLocaleString()}
                     </div>
+                    {!isCompleted && sess.game_type === 'bias-detective' && (
+                      <div className="mt-2">
+                        <HubProgressLabel rawData={sess.raw_data} />
+                        <HubProgressBar rawData={sess.raw_data} />
+                        <HubMiniGameList rawData={sess.raw_data} />
+                      </div>
+                    )}
                   </div>
-                ))}
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="text-right">
+                      <div className="text-sm">
+                        Score:{' '}
+                        <span className={isCompleted ? 'text-green-400' : 'text-amber-300'}>
+                          {sess.score ?? '—'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {sess.accuracy_percent != null ? `${sess.accuracy_percent}% accuracy` : '—'}
+                      </div>
+                      {!isCompleted && sess.time_spent_seconds != null && (
+                        <div className="text-xs text-gray-500">{sess.time_spent_seconds}s elapsed</div>
+                      )}
+                    </div>
+                    <div className={`px-2 py-1 rounded text-xs ${statusClass}`}>{statusLabel}</div>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+            )
+          }
+
+          return (
+            <div>
+              <h2 className="text-lg font-semibold mb-4">
+                Game Sessions ({completed.length} completed
+                {unfinished.length > 0 ? `, ${unfinished.length} unfinished` : ''})
+              </h2>
+              {sessions.length === 0 ? (
+                <div className="bg-gray-800 rounded-xl p-8 text-center">
+                  <div className="text-5xl mb-4">🎮</div>
+                  <p className="text-gray-400">No sessions yet.</p>
+                  <p className="text-sm text-gray-500 mt-2">Students will appear here after playing games.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {completed.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-400 mb-3">Completed</h3>
+                      <div className="space-y-3">
+                        {completed.map((sess) =>
+                          renderSession(sess, 'Completed', 'bg-green-900/50 text-green-300')
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {unfinished.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-400 mb-3">Unfinished</h3>
+                      <div className="space-y-3">
+                        {unfinished.map((sess) =>
+                          renderSession(sess, 'Unfinished', 'bg-amber-900/50 text-amber-300')
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {activeTab === 'analytics' && (
           <ClassAnalytics classId={classId} classCode={classData?.class_code || ''} />

@@ -3,6 +3,19 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchClassGameSessions } from '@/lib/class-sessions'
+import { getHubProgressSummary } from '@/lib/mini-game-progress'
+import {
+  fetchRoomsByIds,
+  getHubSessionEndReason,
+  isLiveHubInProgress,
+  type RoomSnapshotMap,
+} from '@/lib/room-session-display'
+import {
+  buildClassAnalyticsMetrics,
+  type DateFilter,
+  type GameSessionRow,
+} from '@/lib/session-lifecycle'
+import { HubMiniGameList, HubProgressBar, HubProgressLabel, HubProgressSessionTable } from './hub-progress'
 
 interface AnalyticsData {
   sessions: any[]
@@ -16,7 +29,10 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
   const [loading, setLoading] = useState(true)
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'overview' | 'student' | 'timeline'>('overview')
-  const [dateFilter, setDateFilter] = useState<'all' | 'week' | 'month' | 'term'>('all')
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all')
+  const [showUnfinished, setShowUnfinished] = useState(true)
+  const [showEndedIncomplete, setShowEndedIncomplete] = useState(true)
+  const [roomsById, setRoomsById] = useState<RoomSnapshotMap>({})
 
   useEffect(() => {
     loadAnalytics()
@@ -48,6 +64,16 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
       select: '*, students(name, email)',
     })
 
+    const roomIds = Array.from(
+      new Set(
+        sessions
+          .map((s) => (s as { room_id?: string | null }).room_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    )
+    const roomMap = await fetchRoomsByIds(supabase, roomIds)
+    setRoomsById(roomMap)
+
     // Get answers ONLY for sessions from students in this class
     const sessionIds = sessions?.map(s => s.id) || []
     const { data: answers } = await supabase
@@ -65,101 +91,53 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
     setLoading(false)
   }
 
-  // Filter sessions by date
-  const filteredSessions = data.sessions.filter((session: any) => {
-    if (dateFilter === 'all') return true
-    const sessionDate = new Date(session.created_at)
-    const now = new Date()
-    if (dateFilter === 'week') {
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      return sessionDate >= weekAgo
-    }
-    if (dateFilter === 'month') {
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      return sessionDate >= monthAgo
-    }
-    if (dateFilter === 'term') {
-      // Assume school term is roughly 3-4 months
-      const termAgo = new Date(now.getTime() - 120 * 24 * 60 * 60 * 1000)
-      return sessionDate >= termAgo
-    }
-    return true
+  const metrics = buildClassAnalyticsMetrics({
+    sessions: data.sessions as GameSessionRow[],
+    answers: data.answers,
+    dateFilter,
   })
 
-  // Calculate statistics for filtered data
-  const studentScores = filteredSessions.reduce((acc: any, session: any) => {
-    const studentId = session.student_id
-    const studentName = session.students?.name || 'Unknown'
-    if (!acc[studentId]) {
-      acc[studentId] = { 
-        id: studentId,
-        name: studentName, 
-        sessions: [], 
-        totalScore: 0, 
-        totalAccuracy: 0, 
-        count: 0,
-        firstSession: session.created_at,
-        lastSession: session.created_at
-      }
-    }
-    acc[studentId].sessions.push(session)
-    acc[studentId].totalScore += session.score || 0
-    acc[studentId].totalAccuracy += session.accuracy_percent || 0
-    acc[studentId].count += 1
-    if (new Date(session.created_at) < new Date(acc[studentId].firstSession)) {
-      acc[studentId].firstSession = session.created_at
-    }
-    if (new Date(session.created_at) > new Date(acc[studentId].lastSession)) {
-      acc[studentId].lastSession = session.created_at
-    }
-    return acc
-  }, {})
+  const {
+    filteredSessions,
+    completedSessions,
+    unfinishedSessions,
+    studentScores,
+    studentList,
+    classAvgScore,
+    classAvgAccuracy,
+    missedQuestions,
+    filteredAnswers,
+  } = metrics
 
-  const studentList = Object.values(studentScores).map((s: any) => ({
-    ...s,
-    avgScore: s.count > 0 ? Math.round(s.totalScore / s.count) : 0,
-    avgAccuracy: s.count > 0 ? Math.round(s.totalAccuracy / s.count) : 0,
-    improvement: s.count > 1 ? 
-      Math.round(((s.sessions[0].score || 0) - (s.sessions[s.sessions.length - 1].score || 0))) : 0
-  }))
-
-  // Most missed questions (filtered)
-  const filteredSessionIds = filteredSessions.map(s => s.id)
-  const filteredAnswers = data.answers.filter((a: any) => filteredSessionIds.includes(a.session_id))
-
-  const questionStats = filteredAnswers.reduce((acc: any, answer: any) => {
-    const qText = answer.question_text?.substring(0, 80) || 'Unknown'
-    if (!acc[qText]) {
-      acc[qText] = { text: qText, total: 0, correct: 0 }
-    }
-    acc[qText].total += 1
-    if (answer.is_correct) acc[qText].correct += 1
-    return acc
-  }, {})
-
-  const missedQuestions = Object.values(questionStats)
-    .filter((q: any) => q.total > 0)
-    .map((q: any) => ({
-      ...q,
-      accuracy: Math.round((q.correct / q.total) * 100),
-      missed: q.total - q.correct
-    }))
-    .sort((a: any, b: any) => a.accuracy - b.accuracy)
-    .slice(0, 10)
-
-  // Class averages
-  const classAvgScore = studentList.length > 0 
-    ? Math.round(studentList.reduce((sum: number, s: any) => sum + s.avgScore, 0) / studentList.length)
-    : 0
-  const classAvgAccuracy = studentList.length > 0
-    ? Math.round(studentList.reduce((sum: number, s: any) => sum + s.avgAccuracy, 0) / studentList.length)
-    : 0
-
-  // Timeline data for selected student
   const selectedStudentData = selectedStudent ? studentScores[selectedStudent] : null
-  const selectedStudentTimeline = selectedStudentData?.sessions?.sort((a: any, b: any) => 
-    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  ) || []
+  const selectedStudentTimeline =
+    selectedStudentData?.sessions
+      ?.slice()
+      .sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      ) || []
+  const selectedStudentUnfinished = selectedStudent
+    ? unfinishedSessions
+        .filter((s) => s.student_id === selectedStudent)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    : []
+
+  const hubUnfinishedSessions = unfinishedSessions.filter((s) =>
+    getHubProgressSummary(s.raw_data)
+  )
+  const liveInProgressSessions = hubUnfinishedSessions.filter((s) =>
+    isLiveHubInProgress(s, roomsById)
+  )
+  const endedIncompleteSessions = hubUnfinishedSessions.filter(
+    (s) => !isLiveHubInProgress(s, roomsById)
+  )
+  const endedReasonBySessionId = Object.fromEntries(
+    endedIncompleteSessions.map((s) => [s.id, getHubSessionEndReason(s, roomsById)])
+  )
+  const studentsWithCompleted = new Set(completedSessions.map((s) => s.student_id))
+  const inProgressOnlyStudents = liveInProgressSessions.filter(
+    (s) => !studentsWithCompleted.has(s.student_id)
+  )
 
   // Download CSV
   function downloadCSV(type: 'scores' | 'answers' | 'timeline') {
@@ -168,7 +146,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
 
     if (type === 'scores') {
       const headers = ['Student Name', 'Score', 'Accuracy %', 'Time (sec)', 'Date', 'Completed']
-      const rows = filteredSessions.map((s: any) => [
+      const rows = filteredSessions.map((s) => [
         s.students?.name || 'Unknown',
         s.score || 0,
         s.accuracy_percent || 0,
@@ -176,35 +154,35 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
         new Date(s.created_at).toLocaleDateString(),
         s.completed ? 'Yes' : 'No'
       ])
-      csv = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n')
+      csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
       filename = `class-scores-${classCode}-${new Date().toISOString().split('T')[0]}.csv`
     }
 
     if (type === 'answers') {
       const headers = ['Student Name', 'Question', 'Student Answer', 'Correct Answer', 'Correct?', 'Time (ms)', 'Date']
-      const rows = filteredAnswers.map((a: any) => [
+      const rows = filteredAnswers.map((a) => [
         a.game_sessions?.students?.name || 'Unknown',
         a.question_text?.substring(0, 100) || '',
         a.student_answer?.substring(0, 100) || '',
         a.correct_answer?.substring(0, 100) || '',
         a.is_correct ? 'Yes' : 'No',
         a.time_taken_ms || 0,
-        new Date(a.created_at).toLocaleDateString()
+        a.created_at ? new Date(a.created_at).toLocaleDateString() : '',
       ])
-      csv = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n')
+      csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
       filename = `detailed-answers-${classCode}-${new Date().toISOString().split('T')[0]}.csv`
     }
 
     if (type === 'timeline') {
       const headers = ['Date', 'Score', 'Accuracy %', 'Time (sec)', 'Session ID']
-      const rows = selectedStudentTimeline.map((s: any) => [
+      const rows = selectedStudentTimeline.map((s) => [
         new Date(s.created_at).toLocaleDateString(),
         s.score || 0,
         s.accuracy_percent || 0,
         s.time_spent_seconds || 0,
         s.id
       ])
-      csv = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n')
+      csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
       filename = `student-timeline-${selectedStudentData?.name || 'unknown'}-${new Date().toISOString().split('T')[0]}.csv`
     }
 
@@ -244,7 +222,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
           </button>
           <select 
             value={dateFilter} 
-            onChange={(e) => setDateFilter(e.target.value as any)}
+            onChange={(e) => setDateFilter(e.target.value as DateFilter)}
             className="bg-gray-700 text-white px-3 py-2 rounded-lg text-sm border border-gray-600"
           >
             <option value="all">All Time</option>
@@ -270,10 +248,14 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
       </div>
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-gray-700/50 rounded-xl p-4 text-center">
-          <div className="text-2xl md:text-3xl font-bold text-blue-400">{filteredSessions.length}</div>
-          <div className="text-gray-400 text-xs md:text-sm">Sessions</div>
+          <div className="text-2xl md:text-3xl font-bold text-blue-400">{completedSessions.length}</div>
+          <div className="text-gray-400 text-xs md:text-sm">Completed</div>
+        </div>
+        <div className="bg-gray-700/50 rounded-xl p-4 text-center">
+          <div className="text-2xl md:text-3xl font-bold text-amber-400">{unfinishedSessions.length}</div>
+          <div className="text-gray-400 text-xs md:text-sm">Unfinished</div>
         </div>
         <div className="bg-gray-700/50 rounded-xl p-4 text-center">
           <div className="text-2xl md:text-3xl font-bold text-green-400">{studentList.length}</div>
@@ -312,16 +294,62 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
       {/* OVERVIEW VIEW */}
       {viewMode === 'overview' && (
         <div className="space-y-6">
+          {/* In-progress Bias Detective hub sessions */}
+          {liveInProgressSessions.length > 0 && (
+            <div className="bg-gray-800 rounded-xl overflow-hidden border border-amber-900/40">
+              <div className="px-4 py-3 bg-amber-900/20 border-b border-amber-900/40">
+                <h3 className="font-semibold text-amber-200">
+                  🎮 In Progress ({liveInProgressSessions.length})
+                </h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  Live hub progress while the room is active — not included in completed averages.
+                </p>
+              </div>
+              <HubProgressSessionTable sessions={liveInProgressSessions} />
+            </div>
+          )}
+
+          {endedIncompleteSessions.length > 0 && (
+            <div className="bg-gray-800 rounded-xl overflow-hidden border border-gray-600">
+              <button
+                type="button"
+                onClick={() => setShowEndedIncomplete(!showEndedIncomplete)}
+                className="w-full px-4 py-3 bg-gray-700/50 border-b border-gray-700 flex items-center justify-between text-left"
+              >
+                <div>
+                  <h3 className="font-semibold text-gray-300">
+                    📋 Incomplete / Ended sessions ({endedIncompleteSessions.length})
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Hub progress preserved after the room closed or the activity ended.
+                  </p>
+                </div>
+                <span className="text-sm text-gray-400 shrink-0 ml-4">
+                  {showEndedIncomplete ? 'Hide' : 'Show'}
+                </span>
+              </button>
+              {showEndedIncomplete && (
+                <HubProgressSessionTable
+                  sessions={endedIncompleteSessions}
+                  endReasonBySessionId={endedReasonBySessionId}
+                />
+              )}
+            </div>
+          )}
+
           {/* Student Scores Table */}
           <div className="bg-gray-800 rounded-xl overflow-hidden">
             <div className="px-4 py-3 bg-gray-700/50 border-b border-gray-700">
               <h3 className="font-semibold">👥 Student Performance</h3>
+              <p className="text-xs text-gray-500 mt-1">Averages use completed sessions only.</p>
             </div>
             {studentList.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <div className="text-4xl mb-2">📊</div>
                 <p>No game data for this class yet.</p>
-                <p className="text-sm text-gray-500 mt-2">Students need to play the Bias Game and submit answers.</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Students appear here after completing the full Bias Detective hub.
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -329,7 +357,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
                   <thead className="bg-gray-700/30">
                     <tr>
                       <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Student</th>
-                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-400">Sessions</th>
+                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-400">Completed</th>
                       <th className="text-center px-4 py-3 text-sm font-medium text-gray-400">Avg Score</th>
                       <th className="text-center px-4 py-3 text-sm font-medium text-gray-400">Avg Accuracy</th>
                       <th className="text-center px-4 py-3 text-sm font-medium text-gray-400">Trend</th>
@@ -379,6 +407,61 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
               </div>
             )}
           </div>
+
+          {inProgressOnlyStudents.length > 0 && (
+            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+              <p className="text-sm text-gray-400">
+                <span className="text-amber-300 font-medium">
+                  {inProgressOnlyStudents.length} student
+                  {inProgressOnlyStudents.length === 1 ? '' : 's'}
+                </span>{' '}
+                with live hub progress but no completed sessions yet (see In Progress above).
+              </p>
+            </div>
+          )}
+
+          {/* Other unfinished attempts (no hub progress yet) */}
+          {unfinishedSessions.filter((s) => !getHubProgressSummary(s.raw_data)).length > 0 && (
+            <div className="bg-gray-800 rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowUnfinished(!showUnfinished)}
+                className="w-full px-4 py-3 bg-gray-700/50 border-b border-gray-700 flex items-center justify-between text-left"
+              >
+                <h3 className="font-semibold">
+                  ⏸️ Started, no progress yet (
+                  {unfinishedSessions.filter((s) => !getHubProgressSummary(s.raw_data)).length})
+                </h3>
+                <span className="text-sm text-gray-400">{showUnfinished ? 'Hide' : 'Show'}</span>
+              </button>
+              {showUnfinished && (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-700/30">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Student</th>
+                        <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Activity</th>
+                        <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Started</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700">
+                      {unfinishedSessions
+                        .filter((s) => !getHubProgressSummary(s.raw_data))
+                        .map((session) => (
+                          <tr key={session.id} className="hover:bg-gray-700/30">
+                            <td className="px-4 py-3 text-sm">{session.students?.name || 'Unknown'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-400">{session.game_type}</td>
+                            <td className="px-4 py-3 text-sm text-gray-400">
+                              {new Date(session.created_at).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Most Missed Questions */}
           {missedQuestions.length > 0 && (
@@ -468,7 +551,13 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
             <div>
               <h3 className="text-lg font-semibold">📈 {selectedStudentData.name} — Timeline</h3>
               <p className="text-sm text-gray-400">
-                {selectedStudentTimeline.length} sessions from {new Date(selectedStudentData.firstSession).toLocaleDateString()} to {new Date(selectedStudentData.lastSession).toLocaleDateString()}
+                {selectedStudentTimeline.length} completed
+                {selectedStudentUnfinished.length > 0
+                  ? ` · ${selectedStudentUnfinished.length} unfinished`
+                  : ''}{' '}
+                {selectedStudentData.firstSession && selectedStudentData.lastSession
+                  ? `from ${new Date(selectedStudentData.firstSession).toLocaleDateString()} to ${new Date(selectedStudentData.lastSession).toLocaleDateString()}`
+                  : ''}
               </p>
             </div>
             <div className="flex gap-2">
@@ -492,7 +581,7 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
 
           {/* Score Chart (simple bar chart) */}
           <div className="bg-gray-800 rounded-xl p-4">
-            <h4 className="font-semibold mb-4">Score Progression</h4>
+            <h4 className="font-semibold mb-4">Score Progression (completed)</h4>
             <div className="flex items-end gap-2 h-48 overflow-x-auto pb-2">
               {selectedStudentTimeline.map((session: any, i: number) => (
                 <div key={session.id} className="flex flex-col items-center gap-1 min-w-[60px]">
@@ -539,8 +628,8 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
                       <td className="px-4 py-3 text-center">{session.accuracy_percent}%</td>
                       <td className="px-4 py-3 text-center">{session.time_spent_seconds}s</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`px-2 py-1 rounded text-xs ${session.completed ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300'}`}>
-                          {session.completed ? 'Completed' : 'Incomplete'}
+                        <span className="px-2 py-1 rounded text-xs bg-green-900/50 text-green-300">
+                          Completed
                         </span>
                       </td>
                     </tr>
@@ -550,9 +639,57 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
             </div>
           </div>
 
+          {selectedStudentUnfinished.length > 0 && (
+            <div className="bg-gray-800 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 bg-gray-700/50 border-b border-gray-700">
+                <h4 className="font-semibold">In-progress / unfinished attempts</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-700/30">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Started</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Progress</th>
+                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-400">Score</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Mini-games</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {selectedStudentUnfinished.map((session) => {
+                      const live = isLiveHubInProgress(session, roomsById)
+                      const endReason = live ? '' : getHubSessionEndReason(session, roomsById)
+                      return (
+                      <tr key={session.id} className="align-top">
+                        <td className="px-4 py-3 text-sm">
+                          {new Date(session.created_at).toLocaleString()}
+                          {endReason && (
+                            <div className="text-xs text-gray-500 mt-1">{endReason}</div>
+                          )}
+                          {live && (
+                            <div className="text-xs text-amber-400 mt-1">Live in room</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm min-w-[140px]">
+                          <HubProgressLabel rawData={session.raw_data} />
+                          <HubProgressBar rawData={session.raw_data} />
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-amber-300">
+                          {session.score ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <HubMiniGameList rawData={session.raw_data} />
+                        </td>
+                      </tr>
+                    )})}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Answers Breakdown */}
-          {data.answers.filter((a: any) => 
-            selectedStudentTimeline.some((s: any) => s.id === a.session_id)
+          {data.answers.filter((a) =>
+            selectedStudentTimeline.some((s) => s.id === a.session_id)
           ).length > 0 && (
             <div className="bg-gray-800 rounded-xl overflow-hidden">
               <div className="px-4 py-3 bg-gray-700/50 border-b border-gray-700">

@@ -673,81 +673,108 @@ window.finishGame = finishGame;
 let quizAnswers = [];
 let scenarioAnswers = [];
 let gameStartTime = Date.now();
-let hasSubmitted = false;
+let miniGameStartTime = Date.now();
+let hubSubmitted = false;
+const miniGameResults = {};
 
-function sendAnswerToParent(questionId, questionText, studentAnswer, correctAnswer, isCorrect, timeMs) {
+const REQUIRED_MINI_GAMES = ['quiz', 'scenarios', 'matching', 'detective', 'speed'];
+const MINI_GAME_NAMES = {
+  learn: 'Learn the Basics',
+  quiz: 'Bias Knowledge Quiz',
+  scenarios: 'Real-Life Scenarios',
+  matching: 'Bias Matcher',
+  detective: 'Bias Detective',
+  speed: 'Speed Challenge'
+};
+
+function getMaxScoreForMiniGame(gameType) {
+  if (gameType === 'learn') return gameData.learn.slides.length * 50;
+  if (gameType === 'quiz') return gameData.quiz.questions.length * 100;
+  if (gameType === 'scenarios') return gameData.scenarios.scenarios.length * 10;
+  if (gameType === 'matching') return gameData.matching.pairs.length * 125;
+  if (gameType === 'detective') {
+    return gameData.detective.cases.reduce(function(sum, c) { return sum + c.clues.length * 75; }, 0);
+  }
+  if (gameType === 'speed') return gameData.speed.questions.length * (100 + 15 * 10);
+  return 1;
+}
+
+function getMiniGameAccuracy(gameType) {
+  const max = getMaxScoreForMiniGame(gameType);
+  if (max <= 0) return 0;
+  return Math.min(100, Math.round((gameState.currentScore / max) * 100));
+}
+
+function collectAnswersForCurrentMiniGame(gameType) {
+  if (gameType === 'quiz') return quizAnswers.slice();
+  if (gameType === 'scenarios') return scenarioAnswers.slice();
+  return [];
+}
+
+function sendMiniGameComplete(gameType) {
+  const timeSpent = Math.max(1, Math.round((Date.now() - miniGameStartTime) / 1000));
+  const miniGame = {
+    miniGameId: gameType,
+    miniGameName: MINI_GAME_NAMES[gameType] || gameType,
+    score: gameState.currentScore,
+    accuracy: getMiniGameAccuracy(gameType),
+    timeSpent: timeSpent,
+    completedAt: new Date().toISOString()
+  };
+  miniGameResults[gameType] = miniGame;
+
   window.parent.postMessage({
-    type: 'GAME_ANSWER',
+    type: 'GAME_MINI_COMPLETE',
     data: {
-      question_id: questionId,
-      question_text: questionText,
-      student_answer: studentAnswer,
-      correct_answer: correctAnswer,
-      is_correct: isCorrect,
-      time_taken_ms: timeMs
+      activity_id: 'bias-detective',
+      required_mini_game_ids: REQUIRED_MINI_GAMES,
+      mini_game: miniGame,
+      answers: collectAnswersForCurrentMiniGame(gameType)
     }
   }, '*');
 }
 
-function submitGameData() {
-  if (hasSubmitted) return;
-  hasSubmitted = true;
+function submitHubComplete() {
+  if (hubSubmitted) return;
+  hubSubmitted = true;
 
-  const timeSeconds = Math.round((Date.now() - gameStartTime) / 1000);
-  const totalQuestions = quizAnswers.length + scenarioAnswers.length;
-  const correctCount = quizAnswers.filter(a => a.is_correct).length + scenarioAnswers.filter(a => a.is_correct).length;
-  const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+  const results = REQUIRED_MINI_GAMES.map(function(id) { return miniGameResults[id]; }).filter(Boolean);
+  const accuracy = results.length > 0
+    ? Math.round(results.reduce(function(sum, r) { return sum + r.accuracy; }, 0) / results.length)
+    : 0;
 
-  const submissionData = {
+  window.parent.postMessage({
     type: 'GAME_SUBMIT',
     data: {
-      score: gameState.currentScore,
+      hub_completed: true,
+      score: gameState.totalScore,
       accuracy_percent: accuracy,
-      time_spent_seconds: timeSeconds,
-      quiz_answers: quizAnswers,
-      scenario_answers: scenarioAnswers,
-      total_questions: totalQuestions,
-      correct_answers: correctCount
+      time_spent_seconds: Math.round((Date.now() - gameStartTime) / 1000),
+      badges: gameState.badges
     }
-  };
-
-  console.log('Submitting game data:', submissionData);
-  window.parent.postMessage(submissionData, '*');
-
-  // Update button UI
-  const submitBtn = document.getElementById('submit-answers-btn');
-  if (submitBtn) {
-    submitBtn.textContent = '✅ Submitted to Teacher!';
-    submitBtn.disabled = true;
-    submitBtn.style.background = '#22c55e';
-    submitBtn.style.cursor = 'default';
-  }
-
-  const notice = document.getElementById('auto-submit-notice');
-  if (notice) {
-    notice.textContent = '✅ Your answers have been sent to your teacher!';
-    notice.style.color = '#22c55e';
-  }
+  }, '*');
 }
 
-function autoSubmitTimer() {
-  setTimeout(() => {
-    if (!hasSubmitted) {
-      console.log('Auto-submitting after 30 seconds...');
-      submitGameData();
-    }
-  }, 30000);
+function checkHubComplete() {
+  if (hubSubmitted) return;
+  const allDone = REQUIRED_MINI_GAMES.every(function(id) { return gameState.progress[id] === 100; });
+  if (allDone) submitHubComplete();
 }
 
 // ===================== TRACKING HOOKS =====================
-// Wrap existing functions to send data to parent window
 (function() {
-  // Hook into quiz answer selection
+  const originalStartGame = startGame;
+  window.startGame = function(gameType) {
+    miniGameStartTime = Date.now();
+    if (gameType === 'quiz') quizAnswers = [];
+    if (gameType === 'scenarios') scenarioAnswers = [];
+    return originalStartGame(gameType);
+  };
+
   const originalSelectQuizAnswer = window.selectQuizAnswer;
   window.selectQuizAnswer = function(index) {
     const q = gameData.quiz.questions[gameState.currentQuestion];
     const isCorrect = index === q.correct;
-
     quizAnswers.push({
       question_id: 'quiz-' + gameState.currentQuestion,
       question_text: q.q.substring(0, 100),
@@ -756,27 +783,15 @@ function autoSubmitTimer() {
       is_correct: isCorrect,
       time_taken_ms: 3000
     });
-
-    sendAnswerToParent(
-      'quiz-' + gameState.currentQuestion,
-      q.q.substring(0, 100),
-      q.options[index],
-      q.options[q.correct],
-      isCorrect,
-      3000
-    );
-
     return originalSelectQuizAnswer(index);
   };
 
-  // Hook into scenario selection
   const originalSelectScenario = window.selectScenario;
   window.selectScenario = function(index) {
     const s = gameData.scenarios.scenarios[gameState.currentQuestion];
     const choice = s.choices[index];
-    const bestChoice = s.choices.reduce((best, c) => c.score > best.score ? c : best, s.choices[0]);
+    const bestChoice = s.choices.reduce(function(best, c) { return c.score > best.score ? c : best; }, s.choices[0]);
     const isCorrect = choice.score >= 8;
-
     scenarioAnswers.push({
       question_id: 'scenario-' + gameState.currentQuestion,
       question_text: s.title.substring(0, 100),
@@ -785,91 +800,23 @@ function autoSubmitTimer() {
       is_correct: isCorrect,
       time_taken_ms: 5000
     });
-
-    sendAnswerToParent(
-      'scenario-' + gameState.currentQuestion,
-      s.title.substring(0, 100),
-      choice.text.substring(0, 100),
-      bestChoice.text.substring(0, 100),
-      isCorrect,
-      5000
-    );
-
     return originalSelectScenario(index);
   };
 
-  // Hook into finishGame to add submit button
   const originalFinishGame = window.finishGame;
   window.finishGame = function() {
-    // Calculate accuracy
-    const totalQuestions = quizAnswers.length + scenarioAnswers.length;
-    const correctCount = quizAnswers.filter(a => a.is_correct).length + scenarioAnswers.filter(a => a.is_correct).length;
-    const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
-
-    // Call original finishGame
+    const gameType = gameState.currentGame;
     const result = originalFinishGame();
-
-    // Add submit button to results screen
-    setTimeout(() => {
-      const resultsScreen = document.getElementById('resultsScreen');
-      if (resultsScreen && !document.getElementById('submit-answers-btn')) {
-        const submitBtn = document.createElement('button');
-        submitBtn.id = 'submit-answers-btn';
-        submitBtn.textContent = '📤 Submit Answers to Teacher';
-        submitBtn.style.cssText = `
-          display: block;
-          margin: 20px auto;
-          padding: 15px 30px;
-          font-size: 18px;
-          font-weight: bold;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          color: white;
-          border: none;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.3s;
-          box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-        `;
-        submitBtn.onmouseover = function() { this.style.transform = 'scale(1.05)'; };
-        submitBtn.onmouseout = function() { this.style.transform = 'scale(1)'; };
-        submitBtn.onclick = submitGameData;
-
-        // Insert before the "Return to HQ" button
-        const returnBtn = resultsScreen.querySelector('button[onclick="showHome()"]');
-        if (returnBtn) {
-          resultsScreen.insertBefore(submitBtn, returnBtn);
-        } else {
-          resultsScreen.appendChild(submitBtn);
-        }
-
-        // Add auto-submit notice
-        const notice = document.createElement('p');
-        notice.id = 'auto-submit-notice';
-        notice.textContent = '⏰ Auto-submitting in 30 seconds if not clicked...';
-        notice.style.cssText = 'text-align: center; color: #94a3b8; font-size: 14px; margin-top: 10px; margin-bottom: 10px;';
-        resultsScreen.insertBefore(notice, submitBtn);
-
-        // Start auto-submit timer
-        autoSubmitTimer();
-
-        // Update countdown
-        let countdown = 30;
-        const countdownInterval = setInterval(() => {
-          countdown--;
-          const noticeEl = document.getElementById('auto-submit-notice');
-          if (noticeEl && !hasSubmitted) {
-            noticeEl.textContent = `⏰ Auto-submitting in ${countdown} seconds...`;
-          } else {
-            clearInterval(countdownInterval);
-          }
-        }, 1000);
-      }
-    }, 500);
-
+    if (gameType) {
+      sendMiniGameComplete(gameType);
+      if (gameType === 'quiz') quizAnswers = [];
+      if (gameType === 'scenarios') scenarioAnswers = [];
+      checkHubComplete();
+    }
     return result;
   };
 
-  console.log('✅ Tracking hooks and submit system installed');
+  console.log('✅ Hub progress tracking installed (auto-save per mini-game)');
 })();
 </script>
 </body>
