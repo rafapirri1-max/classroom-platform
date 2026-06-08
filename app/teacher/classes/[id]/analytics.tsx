@@ -31,7 +31,6 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
   const [viewMode, setViewMode] = useState<'overview' | 'student' | 'timeline'>('overview')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [showUnfinished, setShowUnfinished] = useState(true)
-  const [showEndedIncomplete, setShowEndedIncomplete] = useState(true)
   const [roomsById, setRoomsById] = useState<RoomSnapshotMap>({})
 
   useEffect(() => {
@@ -122,18 +121,12 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     : []
 
-  const hubUnfinishedSessions = unfinishedSessions.filter((s) =>
-    getHubProgressSummary(s.raw_data)
+  const liveInProgressSessions = unfinishedSessions.filter(
+    (s) => getHubProgressSummary(s.raw_data) && isLiveHubInProgress(s, roomsById)
   )
-  const liveInProgressSessions = hubUnfinishedSessions.filter((s) =>
-    isLiveHubInProgress(s, roomsById)
-  )
-  const endedIncompleteSessions = hubUnfinishedSessions.filter(
-    (s) => !isLiveHubInProgress(s, roomsById)
-  )
-  const endedReasonBySessionId = Object.fromEntries(
-    endedIncompleteSessions.map((s) => [s.id, getHubSessionEndReason(s, roomsById)])
-  )
+  const overviewUnfinishedCount =
+    liveInProgressSessions.length +
+    unfinishedSessions.filter((s) => !getHubProgressSummary(s.raw_data)).length
   const studentsWithCompleted = new Set(completedSessions.map((s) => s.student_id))
   const inProgressOnlyStudents = liveInProgressSessions.filter(
     (s) => !studentsWithCompleted.has(s.student_id)
@@ -254,8 +247,8 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
           <div className="text-gray-400 text-xs md:text-sm">Completed</div>
         </div>
         <div className="bg-gray-700/50 rounded-xl p-4 text-center">
-          <div className="text-2xl md:text-3xl font-bold text-amber-400">{unfinishedSessions.length}</div>
-          <div className="text-gray-400 text-xs md:text-sm">Unfinished</div>
+          <div className="text-2xl md:text-3xl font-bold text-amber-400">{overviewUnfinishedCount}</div>
+          <div className="text-gray-400 text-xs md:text-sm">Live unfinished</div>
         </div>
         <div className="bg-gray-700/50 rounded-xl p-4 text-center">
           <div className="text-2xl md:text-3xl font-bold text-green-400">{studentList.length}</div>
@@ -306,34 +299,6 @@ export default function ClassAnalytics({ classId, classCode }: { classId: string
                 </p>
               </div>
               <HubProgressSessionTable sessions={liveInProgressSessions} />
-            </div>
-          )}
-
-          {endedIncompleteSessions.length > 0 && (
-            <div className="bg-gray-800 rounded-xl overflow-hidden border border-gray-600">
-              <button
-                type="button"
-                onClick={() => setShowEndedIncomplete(!showEndedIncomplete)}
-                className="w-full px-4 py-3 bg-gray-700/50 border-b border-gray-700 flex items-center justify-between text-left"
-              >
-                <div>
-                  <h3 className="font-semibold text-gray-300">
-                    📋 Incomplete / Ended sessions ({endedIncompleteSessions.length})
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Hub progress preserved after the room closed or the activity ended.
-                  </p>
-                </div>
-                <span className="text-sm text-gray-400 shrink-0 ml-4">
-                  {showEndedIncomplete ? 'Hide' : 'Show'}
-                </span>
-              </button>
-              {showEndedIncomplete && (
-                <HubProgressSessionTable
-                  sessions={endedIncompleteSessions}
-                  endReasonBySessionId={endedReasonBySessionId}
-                />
-              )}
             </div>
           )}
 
