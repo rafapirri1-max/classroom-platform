@@ -20,3 +20,10 @@ Adds the runtime layer linking teacher launches to student sessions:
 - `game_sessions.activity_instance_id`
 
 Existing `game_sessions` rows keep `activity_instance_id = NULL` and remain visible in analytics.
+
+## Poll Phase A — `20250605110000_poll_phase_a.sql`
+
+Poll launch support (votes in a later phase):
+
+- `activity_instances.launch_config` — poll question/options snapshot at launch
+- `poll_responses` table — empty until Phase B voting

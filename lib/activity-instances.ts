@@ -62,7 +62,8 @@ export async function endActiveRoomInstance(
 async function createAndActivateInstance(
   supabase: SupabaseClient,
   room: RoomForActivityLaunch,
-  activityId: string
+  activityId: string,
+  launchConfig?: Record<string, unknown> | null
 ): Promise<string> {
   const { data: instance, error: insertError } = await supabase
     .from('activity_instances')
@@ -72,6 +73,7 @@ async function createAndActivateInstance(
       teacher_id: room.teacher_id ?? null,
       activity_id: activityId,
       status: 'active',
+      launch_config: launchConfig ?? null,
     })
     .select('id')
     .single()
@@ -144,6 +146,41 @@ export async function launchRoomActivity(
   }
 
   await createAndActivateInstance(supabase, room, gameId)
+}
+
+/**
+ * Launch a poll: same instance lifecycle as games, with launch_config snapshot.
+ * Returns the new activity_instance id.
+ */
+export async function launchPollActivity(
+  supabase: SupabaseClient,
+  room: RoomForActivityLaunch,
+  launchConfig: Record<string, unknown>
+): Promise<string> {
+  const activityId = 'poll'
+
+  if (room.current_activity === activityId) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_ended',
+      room.active_activity_instance_id
+    )
+    const { error: waitingError } = await supabase
+      .from('rooms')
+      .update({ current_activity: 'waiting' })
+      .eq('id', room.id)
+    if (waitingError) throw waitingError
+  } else if (room.active_activity_instance_id) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_switched',
+      room.active_activity_instance_id
+    )
+  }
+
+  return createAndActivateInstance(supabase, room, activityId, launchConfig)
 }
 
 /** Close room: end active instance, clear pointer, set status closed (preserve current_activity). */

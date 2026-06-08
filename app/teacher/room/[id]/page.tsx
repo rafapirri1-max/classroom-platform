@@ -5,7 +5,10 @@ import { useParams, useRouter } from 'next/navigation'
 import { closeRoomWithInstances, launchRoomActivity } from '@/lib/activity-instances'
 import { activityToLaunchCard } from '@/lib/activity-engine/adapters/game-json'
 import type { ActivityLaunchCard } from '@/lib/activity-engine/types'
-import { supabase } from '@/lib/supabase'
+import { fetchActivePollConfig } from '@/lib/poll/fetch-active'
+import type { PollLaunchConfig } from '@/lib/poll/types'
+import { POLL_ACTIVITY_ID } from '@/lib/poll/types'
+import { supabase, getUserProfile } from '@/lib/supabase'
 import QRCode from 'qrcode'
 
 export default function TeacherRoomPage() {
@@ -19,6 +22,12 @@ export default function TeacherRoomPage() {
   const [qrUrl, setQrUrl] = useState('')
   const [className, setClassName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [teacherId, setTeacherId] = useState<string | null>(null)
+  const [showPollModal, setShowPollModal] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState(['Option A', 'Option B', 'Option C', 'Option D'])
+  const [pollLaunching, setPollLaunching] = useState(false)
+  const [activePollConfig, setActivePollConfig] = useState<PollLaunchConfig | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && room?.code) {
@@ -31,6 +40,8 @@ export default function TeacherRoomPage() {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
     if (data) {
       setRoom(data)
+      const pollConfig = await fetchActivePollConfig(supabase, data)
+      setActivePollConfig(pollConfig)
       if (data.class_id) {
         const { data: cls } = await supabase
           .from('classes')
@@ -58,6 +69,9 @@ export default function TeacherRoomPage() {
   }, [])
 
   useEffect(() => {
+    getUserProfile().then((profile) => {
+      if (profile?.role === 'teacher') setTeacherId(profile.id)
+    })
     loadRoom()
     loadParticipants()
     loadActivities()
@@ -86,6 +100,51 @@ export default function TeacherRoomPage() {
       const message = err instanceof Error ? err.message : 'Failed to launch activity'
       alert(message)
     }
+  }
+
+  async function launchPoll() {
+    if (!teacherId) {
+      alert('Teacher profile not loaded. Please refresh and try again.')
+      return
+    }
+    setPollLaunching(true)
+    try {
+      const res = await fetch('/api/poll/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: roomId,
+          teacher_id: teacherId,
+          question: pollQuestion,
+          options: pollOptions,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        throw new Error(json.error || 'Failed to launch poll')
+      }
+      setShowPollModal(false)
+      setPollQuestion('')
+      setPollOptions(['Option A', 'Option B', 'Option C', 'Option D'])
+      await loadRoom()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to launch poll'
+      alert(message)
+    } finally {
+      setPollLaunching(false)
+    }
+  }
+
+  function updatePollOption(index: number, value: string) {
+    setPollOptions((prev) => prev.map((opt, i) => (i === index ? value : opt)))
+  }
+
+  function addPollOption() {
+    setPollOptions((prev) => (prev.length >= 6 ? prev : [...prev, `Option ${String.fromCharCode(65 + prev.length)}`]))
+  }
+
+  function removePollOption(index: number) {
+    setPollOptions((prev) => (prev.length <= 2 ? prev : prev.filter((_, i) => i !== index)))
   }
 
   async function closeRoom() {
@@ -181,6 +240,23 @@ export default function TeacherRoomPage() {
                 )}
               </button>
 
+              <button
+                type="button"
+                onClick={() => setShowPollModal(true)}
+                className={`p-5 rounded-2xl border-2 text-left transition-all ${
+                  room.current_activity === POLL_ACTIVITY_ID
+                    ? 'bg-primary/30 border-primary text-white'
+                    : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                }`}
+              >
+                <div className="text-3xl mb-2">📊</div>
+                <div className="font-bold">Quick Poll</div>
+                <div className="text-xs text-indigo-200 mt-1">Ask the class a multiple-choice question</div>
+                {room.current_activity === POLL_ACTIVITY_ID && (
+                  <div className="text-xs mt-2 text-primary-300">✓ Currently Active</div>
+                )}
+              </button>
+
               {games.map((game) => (
                 <button
                   key={game.id}
@@ -200,6 +276,24 @@ export default function TeacherRoomPage() {
                 </button>
               ))}
             </div>
+
+            {room.current_activity === POLL_ACTIVITY_ID && activePollConfig && (
+              <div className="mb-8 bg-white/10 border border-primary/40 rounded-2xl p-5">
+                <h3 className="text-lg font-bold text-white mb-2">📊 Live poll</h3>
+                <p className="text-white font-medium mb-4">{activePollConfig.question}</p>
+                <ul className="space-y-2">
+                  {activePollConfig.options.map((opt) => (
+                    <li
+                      key={opt.id}
+                      className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-indigo-100 text-sm"
+                    >
+                      {opt.label}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-indigo-300 mt-4">Voting and results arrive in a later update.</p>
+              </div>
+            )}
 
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">👥 Connected Students</h2>
@@ -244,6 +338,76 @@ export default function TeacherRoomPage() {
           </div>
         </div>
       </div>
+
+      {showPollModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-gray-900 border border-white/20 rounded-2xl w-full max-w-lg p-6 shadow-xl">
+            <h3 className="text-xl font-bold text-white mb-4">Launch Quick Poll</h3>
+            <label className="block text-sm text-indigo-200 mb-2">Question</label>
+            <input
+              type="text"
+              value={pollQuestion}
+              onChange={(e) => setPollQuestion(e.target.value)}
+              placeholder="What do you think?"
+              maxLength={500}
+              className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 mb-4 focus:outline-none focus:border-primary"
+            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm text-indigo-200">Options</label>
+              {pollOptions.length < 6 && (
+                <button
+                  type="button"
+                  onClick={addPollOption}
+                  className="text-xs text-primary-300 hover:text-white"
+                >
+                  + Add option
+                </button>
+              )}
+            </div>
+            <div className="space-y-2 mb-6">
+              {pollOptions.map((opt, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={opt}
+                    onChange={(e) => updatePollOption(index, e.target.value)}
+                    maxLength={200}
+                    className="flex-1 px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-primary"
+                  />
+                  {pollOptions.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => removePollOption(index)}
+                      className="px-3 text-red-300 hover:text-red-200"
+                      aria-label="Remove option"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPollModal(false)}
+                disabled={pollLaunching}
+                className="px-4 py-2 rounded-xl text-indigo-200 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void launchPoll()}
+                disabled={pollLaunching || !pollQuestion.trim()}
+                className="px-5 py-2 rounded-xl bg-primary text-white font-semibold hover:opacity-90 disabled:opacity-50"
+              >
+                {pollLaunching ? 'Launching...' : 'Launch Poll'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

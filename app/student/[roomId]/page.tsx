@@ -13,6 +13,8 @@ import {
   type RoomRunContext,
   type TrackCaller,
 } from '@/lib/session-lifecycle'
+import { fetchActivePollConfig } from '@/lib/poll/fetch-active'
+import type { PollLaunchConfig } from '@/lib/poll/types'
 import { supabase, getUserProfile } from '@/lib/supabase'
 
 const callTrack: TrackCaller = async (action, data) => {
@@ -39,6 +41,7 @@ function StudentContent() {
   const [submissionOk, setSubmissionOk] = useState(false)
   const [gameAttemptKey, setGameAttemptKey] = useState(0)
   const [enrolledInClass, setEnrolledInClass] = useState<boolean | null>(null)
+  const [pollConfig, setPollConfig] = useState<PollLaunchConfig | null>(null)
 
   const profileRef = useRef<any>(null)
   const sessionIdRef = useRef<string | null>(null)
@@ -57,7 +60,13 @@ function StudentContent() {
 
   const loadRoom = useCallback(async () => {
     const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
-    if (data) setRoom(data as RoomRunContext)
+    if (data) {
+      setRoom(data as RoomRunContext)
+      const config = await fetchActivePollConfig(supabase, data)
+      setPollConfig(config)
+    } else {
+      setPollConfig(null)
+    }
     return data as RoomRunContext | null
   }, [roomId])
 
@@ -141,6 +150,7 @@ function StudentContent() {
         async (payload) => {
           const roomData = payload.new as RoomRunContext
           setRoom(roomData)
+          void fetchActivePollConfig(supabase, roomData).then(setPollConfig)
 
           const studentId = profileRef.current?.id
           if (!studentId) return
@@ -394,16 +404,26 @@ function StudentContent() {
         {activity === 'poll' && (
           <div className="max-w-md mx-auto mt-8">
             <h2 className="text-xl font-bold text-white mb-6 text-center">📊 Quick Poll</h2>
-            <div className="space-y-3">
-              {['Option A', 'Option B', 'Option C', 'Option D'].map((opt) => (
-                <button
-                  key={opt}
-                  className="w-full p-4 bg-white/10 rounded-xl text-white font-semibold hover:bg-white/20 transition-colors border border-white/20"
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
+            {pollConfig ? (
+              <>
+                <p className="text-white text-center font-medium mb-6">{pollConfig.question}</p>
+                <div className="space-y-3">
+                  {pollConfig.options.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      disabled
+                      className="w-full p-4 bg-white/10 rounded-xl text-white font-semibold border border-white/20 opacity-90 cursor-default"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-center text-indigo-300 text-sm mt-6">Voting opens in a future update.</p>
+              </>
+            ) : (
+              <p className="text-center text-indigo-200">Loading poll...</p>
+            )}
           </div>
         )}
 
