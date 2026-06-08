@@ -42,6 +42,9 @@ function StudentContent() {
   const [gameAttemptKey, setGameAttemptKey] = useState(0)
   const [enrolledInClass, setEnrolledInClass] = useState<boolean | null>(null)
   const [pollConfig, setPollConfig] = useState<PollLaunchConfig | null>(null)
+  const [pollVotedOptionId, setPollVotedOptionId] = useState<string | null>(null)
+  const [pollVoting, setPollVoting] = useState(false)
+  const [pollVoteError, setPollVoteError] = useState('')
 
   const profileRef = useRef<any>(null)
   const sessionIdRef = useRef<string | null>(null)
@@ -128,6 +131,73 @@ function StudentContent() {
     return result.sessionId
   }, [applyRunResult])
 
+  const activePollInstanceId =
+    room?.current_activity === 'poll' ? room?.active_activity_instance_id : null
+
+  useEffect(() => {
+    if (!activePollInstanceId || !profile?.id) {
+      setPollVotedOptionId(null)
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          activity_instance_id: activePollInstanceId,
+          student_id: profile.id,
+        })
+        const res = await fetch(`/api/poll/my-vote?${params}`)
+        const json = await res.json()
+        if (!cancelled && res.ok && json.voted && json.selected_option_id) {
+          setPollVotedOptionId(json.selected_option_id)
+        } else if (!cancelled) {
+          setPollVotedOptionId(null)
+        }
+      } catch {
+        if (!cancelled) setPollVotedOptionId(null)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activePollInstanceId, profile?.id])
+
+  const submitPollVote = useCallback(
+    async (optionId: string) => {
+      if (!room?.id || !activePollInstanceId || !profile?.id || pollVotedOptionId || pollVoting) {
+        return
+      }
+      setPollVoting(true)
+      setPollVoteError('')
+      try {
+        const res = await fetch('/api/poll/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            room_id: room.id,
+            activity_instance_id: activePollInstanceId,
+            student_id: profile.id,
+            selected_option_id: optionId,
+          }),
+        })
+        const json = await res.json()
+        if (!res.ok || json.error) {
+          throw new Error(json.error || 'Vote failed')
+        }
+        setPollVotedOptionId(optionId)
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Vote failed'
+        setPollVoteError(message)
+      } finally {
+        setPollVoting(false)
+      }
+    },
+    [room?.id, activePollInstanceId, profile?.id, pollVotedOptionId, pollVoting]
+  )
+
   useEffect(() => {
     loadRoom().then(() => setLoading(false))
     getUserProfile().then(async (prof) => {
@@ -151,6 +221,10 @@ function StudentContent() {
           const roomData = payload.new as RoomRunContext
           setRoom(roomData)
           void fetchActivePollConfig(supabase, roomData).then(setPollConfig)
+          if (roomData.current_activity !== 'poll') {
+            setPollVotedOptionId(null)
+            setPollVoteError('')
+          }
 
           const studentId = profileRef.current?.id
           if (!studentId) return
@@ -407,19 +481,44 @@ function StudentContent() {
             {pollConfig ? (
               <>
                 <p className="text-white text-center font-medium mb-6">{pollConfig.question}</p>
-                <div className="space-y-3">
-                  {pollConfig.options.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      disabled
-                      className="w-full p-4 bg-white/10 rounded-xl text-white font-semibold border border-white/20 opacity-90 cursor-default"
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-center text-indigo-300 text-sm mt-6">Voting opens in a future update.</p>
+                {!profile?.id ? (
+                  <p className="text-center text-amber-200 text-sm">
+                    Sign in to vote in this poll.
+                  </p>
+                ) : pollVotedOptionId ? (
+                  <div className="text-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-green-500/20 border border-green-500/40 text-green-200 mb-4">
+                      <span>✓</span>
+                      <span className="font-semibold">You voted</span>
+                    </div>
+                    <p className="text-indigo-200 text-sm">
+                      Your answer:{' '}
+                      <span className="text-white font-medium">
+                        {pollConfig.options.find((o) => o.id === pollVotedOptionId)?.label ??
+                          pollVotedOptionId}
+                      </span>
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {pollConfig.options.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          disabled={pollVoting}
+                          onClick={() => void submitPollVote(opt.id)}
+                          className="w-full p-4 bg-white/10 rounded-xl text-white font-semibold hover:bg-white/20 transition-colors border border-white/20 disabled:opacity-60"
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {pollVoteError && (
+                      <p className="text-center text-red-300 text-sm mt-4">{pollVoteError}</p>
+                    )}
+                  </>
+                )}
               </>
             ) : (
               <p className="text-center text-indigo-200">Loading poll...</p>

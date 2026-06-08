@@ -6,6 +6,7 @@ import { closeRoomWithInstances, launchRoomActivity } from '@/lib/activity-insta
 import { activityToLaunchCard } from '@/lib/activity-engine/adapters/game-json'
 import type { ActivityLaunchCard } from '@/lib/activity-engine/types'
 import { fetchActivePollConfig } from '@/lib/poll/fetch-active'
+import type { PollResultsPayload } from '@/lib/poll/results'
 import type { PollLaunchConfig } from '@/lib/poll/types'
 import { POLL_ACTIVITY_ID } from '@/lib/poll/types'
 import { supabase, getUserProfile } from '@/lib/supabase'
@@ -28,6 +29,7 @@ export default function TeacherRoomPage() {
   const [pollOptions, setPollOptions] = useState(['Option A', 'Option B', 'Option C', 'Option D'])
   const [pollLaunching, setPollLaunching] = useState(false)
   const [activePollConfig, setActivePollConfig] = useState<PollLaunchConfig | null>(null)
+  const [pollResults, setPollResults] = useState<PollResultsPayload | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && room?.code) {
@@ -90,6 +92,39 @@ export default function TeacherRoomPage() {
       participantChannel.unsubscribe()
     }
   }, [roomId, loadRoom, loadParticipants, loadActivities])
+
+  const activePollInstanceId =
+    room?.current_activity === POLL_ACTIVITY_ID ? room?.active_activity_instance_id : null
+
+  useEffect(() => {
+    if (!activePollInstanceId) {
+      setPollResults(null)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadResults() {
+      try {
+        const res = await fetch(
+          `/api/poll/results?activity_instance_id=${encodeURIComponent(activePollInstanceId)}`
+        )
+        const json = await res.json()
+        if (!cancelled && res.ok && !json.error) {
+          setPollResults(json as PollResultsPayload)
+        }
+      } catch {
+        // ignore poll refresh errors
+      }
+    }
+
+    void loadResults()
+    const interval = setInterval(loadResults, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [activePollInstanceId])
 
   async function launchActivity(gameId: string) {
     if (!room) return
@@ -279,19 +314,42 @@ export default function TeacherRoomPage() {
 
             {room.current_activity === POLL_ACTIVITY_ID && activePollConfig && (
               <div className="mb-8 bg-white/10 border border-primary/40 rounded-2xl p-5">
-                <h3 className="text-lg font-bold text-white mb-2">📊 Live poll</h3>
-                <p className="text-white font-medium mb-4">{activePollConfig.question}</p>
-                <ul className="space-y-2">
-                  {activePollConfig.options.map((opt) => (
-                    <li
-                      key={opt.id}
-                      className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-indigo-100 text-sm"
-                    >
-                      {opt.label}
-                    </li>
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-2">📊 Live poll results</h3>
+                    <p className="text-white font-medium">{activePollConfig.question}</p>
+                  </div>
+                  <div className="text-right text-sm shrink-0">
+                    <div className="text-2xl font-bold text-primary-300">
+                      {pollResults?.total_votes ?? 0}
+                    </div>
+                    <div className="text-indigo-300 text-xs">votes</div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {(pollResults?.options ?? activePollConfig.options.map((opt) => ({
+                    id: opt.id,
+                    label: opt.label,
+                    count: 0,
+                    percent: 0,
+                  }))).map((opt) => (
+                    <div key={opt.id}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-indigo-100">{opt.label}</span>
+                        <span className="text-indigo-300">
+                          {opt.count} ({opt.percent}%)
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full bg-primary/80 rounded-full transition-all duration-300"
+                          style={{ width: `${opt.percent}%` }}
+                        />
+                      </div>
+                    </div>
                   ))}
-                </ul>
-                <p className="text-xs text-indigo-300 mt-4">Voting and results arrive in a later update.</p>
+                </div>
+                <p className="text-xs text-indigo-400 mt-4">Updates every few seconds</p>
               </div>
             )}
 
