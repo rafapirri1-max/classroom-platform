@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   layoutWordCloudWords,
   wordCloudLayoutKey,
@@ -39,11 +39,35 @@ export function WordCloudPresent({ activityInstanceId }: WordCloudPresentProps) 
     }
   }, [activityInstanceId])
 
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const [stageSize, setStageSize] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  })
+
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+
+    const update = () => {
+      setStageSize({ width: el.clientWidth, height: el.clientHeight })
+    }
+    update()
+
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [payload?.phase])
+
   const words = payload?.words ?? []
   const layoutKey = useMemo(() => wordCloudLayoutKey(words), [words])
   const placedWords = useMemo(
-    () => (words.length > 0 ? layoutWordCloudWords(words) : []),
-    [layoutKey]
+    () =>
+      words.length > 0 && stageSize.width > 0 && stageSize.height > 0
+        ? layoutWordCloudWords(words, stageSize)
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layoutKey, stageSize.width, stageSize.height]
   )
 
   if (!payload) {
@@ -90,18 +114,20 @@ export function WordCloudPresent({ activityInstanceId }: WordCloudPresentProps) 
           <p className="text-2xl md:text-3xl text-indigo-200/90">No responses yet.</p>
         </div>
       ) : (
-        <div className="relative mx-auto w-full max-w-[1400px] flex-1 min-h-[65vh] md:min-h-[70vh] overflow-visible px-4 py-6">
+        <div
+          ref={stageRef}
+          className="relative mx-auto w-full max-w-[1400px] flex-1 min-h-[65vh] md:min-h-[70vh] overflow-hidden"
+        >
           {placedWords.map((word) => (
             <span
               key={word.text}
-              className="absolute font-bold leading-tight select-none text-center"
+              className="absolute font-bold leading-none select-none whitespace-nowrap"
               style={{
                 left: `${word.left}%`,
                 top: `${word.top}%`,
                 fontSize: `${word.fontSize}px`,
                 color: word.color,
-                maxWidth: 'min(280px, 36vw)',
-                transform: `translate(-50%, -50%) rotate(${word.rotation}deg)`,
+                transform: 'translate(-50%, -50%)',
                 textShadow: '0 2px 18px rgba(0,0,0,0.45)',
               }}
               title={`${word.count} submission${word.count === 1 ? '' : 's'}`}
