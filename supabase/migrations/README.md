@@ -2,6 +2,10 @@
 
 Apply SQL files in order via the [Supabase SQL Editor](https://supabase.com/dashboard) or the Supabase CLI (`supabase db push`).
 
+**Before migrating:** run `schema_type_check.sql` in the SQL Editor. This project assumes `students.id` is **text** (not uuid). All foreign keys to `students(id)` use `text`.
+
+If a prior attempt failed with `42804` (incompatible types), see `20250604999999_repair_wrong_student_fk_types.sql`.
+
 ## Phase 0 — `20250605000000_phase0_room_class_attribution.sql`
 
 Adds optional links between live rooms, classes, and analytics:

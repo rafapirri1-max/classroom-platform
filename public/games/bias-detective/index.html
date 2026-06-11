@@ -198,7 +198,7 @@
 
 <script>
 // ===================== GAME DATA =====================
-const gameData = {
+const BUILTIN_GAME_DATA = {
     learn: {
         title: "Learn the Basics",
         slides: [
@@ -322,6 +322,34 @@ const gameData = {
         ]
     }
 };
+let gameData = BUILTIN_GAME_DATA;
+
+async function initQuestionSetFromLaunch() {
+    const params = new URLSearchParams(window.location.search);
+    const instanceId = params.get('activity_instance_id');
+    if (!instanceId) return;
+
+    const startBtn = document.querySelector('#introScreen .start-btn');
+    if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Loading question set...';
+    }
+    try {
+        const res = await fetch('/api/bias-detective/game-data?activity_instance_id=' + encodeURIComponent(instanceId));
+        const json = await res.json();
+        if (res.ok && json.content) {
+            gameData = json.content;
+        }
+    } catch (e) {
+        console.warn('Custom question set load failed; using built-in.', e);
+    } finally {
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = '🚀 Start Your Journey';
+        }
+    }
+}
+initQuestionSetFromLaunch();
 
 // ===================== GAME STATE =====================
 let gameState = {

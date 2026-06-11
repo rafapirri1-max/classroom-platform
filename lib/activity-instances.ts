@@ -183,6 +183,102 @@ export async function launchPollActivity(
   return createAndActivateInstance(supabase, room, activityId, launchConfig)
 }
 
+/** Launch a discussion with launch_config snapshot. Returns the new activity_instance id. */
+export async function launchDiscussionActivity(
+  supabase: SupabaseClient,
+  room: RoomForActivityLaunch,
+  launchConfig: Record<string, unknown>
+): Promise<string> {
+  const activityId = 'discussion'
+
+  if (room.current_activity === activityId) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_ended',
+      room.active_activity_instance_id
+    )
+    const { error: waitingError } = await supabase
+      .from('rooms')
+      .update({ current_activity: 'waiting' })
+      .eq('id', room.id)
+    if (waitingError) throw waitingError
+  } else if (room.active_activity_instance_id) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_switched',
+      room.active_activity_instance_id
+    )
+  }
+
+  return createAndActivateInstance(supabase, room, activityId, launchConfig)
+}
+
+/** Launch Bias Detective with optional question set snapshot in launch_config. */
+export async function launchBiasDetectiveActivity(
+  supabase: SupabaseClient,
+  room: RoomForActivityLaunch,
+  launchConfig: Record<string, unknown>
+): Promise<string> {
+  const activityId = 'bias-detective'
+
+  if (room.current_activity === activityId) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_ended',
+      room.active_activity_instance_id
+    )
+    const { error: waitingError } = await supabase
+      .from('rooms')
+      .update({ current_activity: 'waiting' })
+      .eq('id', room.id)
+    if (waitingError) throw waitingError
+  } else if (room.active_activity_instance_id) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_switched',
+      room.active_activity_instance_id
+    )
+  }
+
+  return createAndActivateInstance(supabase, room, activityId, launchConfig)
+}
+
+/** Launch a word cloud with launch_config snapshot. Returns the new activity_instance id. */
+export async function launchWordCloudActivity(
+  supabase: SupabaseClient,
+  room: RoomForActivityLaunch,
+  launchConfig: Record<string, unknown>
+): Promise<string> {
+  const activityId = 'wordcloud'
+
+  if (room.current_activity === activityId) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_ended',
+      room.active_activity_instance_id
+    )
+    const { error: waitingError } = await supabase
+      .from('rooms')
+      .update({ current_activity: 'waiting' })
+      .eq('id', room.id)
+    if (waitingError) throw waitingError
+  } else if (room.active_activity_instance_id) {
+    await endActiveRoomInstance(
+      supabase,
+      room.id,
+      'activity_switched',
+      room.active_activity_instance_id
+    )
+  }
+
+  return createAndActivateInstance(supabase, room, activityId, launchConfig)
+}
+
 /** Close room: end active instance, clear pointer, set status closed (preserve current_activity). */
 export async function closeRoomWithInstances(
   supabase: SupabaseClient,

@@ -1,0 +1,18 @@
+-- OPTIONAL: run only if a prior migration attempt created uuid columns
+-- referencing students(id) when students.id is text.
+--
+-- 1. Run schema_type_check.sql first.
+-- 2. If rooms.teacher_id exists as uuid, or poll/discussion student_id is uuid, run the
+--    relevant statements below (uncomment as needed).
+-- 3. Re-run the corrected migrations from phase0 onward.
+
+-- ALTER TABLE rooms DROP COLUMN IF EXISTS teacher_id;
+-- ALTER TABLE activity_instances DROP COLUMN IF EXISTS teacher_id;
+-- DROP TABLE IF EXISTS discussion_responses;
+-- DROP TABLE IF EXISTS poll_responses;
+-- DROP TABLE IF EXISTS activity_instances;
+-- ALTER TABLE rooms DROP COLUMN IF EXISTS active_activity_instance_id;
+-- ALTER TABLE game_sessions DROP COLUMN IF EXISTS activity_instance_id;
+-- ALTER TABLE game_sessions DROP COLUMN IF EXISTS room_id;
+-- ALTER TABLE game_sessions DROP COLUMN IF EXISTS class_id;
+-- ALTER TABLE rooms DROP COLUMN IF EXISTS class_id;

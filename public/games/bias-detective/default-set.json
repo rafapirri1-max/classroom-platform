@@ -1,0 +1,556 @@
+{
+  "learn": {
+    "title": "Learn the Basics",
+    "slides": [
+      {
+        "emoji": "🧠",
+        "title": "What Is Bias, Really?",
+        "content": "Biases are mental shortcuts your brain uses to make decisions quickly. Everyone has them — they are NOT a sign of stupidity! Your brain evolved these shortcuts over hundreds of thousands of years to keep you alive.",
+        "tip": "💡 Key insight: The first step to beating bias is admitting you have it."
+      },
+      {
+        "emoji": "⚡",
+        "title": "Your Brain Team: Two Systems",
+        "content": "Your brain has two parts working together:<br><br>🦸 <strong>Amygdala (The Jumpy Superhero)</strong> — Reacts in just 20 milliseconds! It's emotional and fast, but sometimes wrong.<br><br>🧑‍🔬 <strong>Prefrontal Cortex (The Smart One)</strong> — Takes 100+ ms to decide. It's rational and careful, but slower.<br><br>The catch? For teens, the prefrontal cortex is still developing until about age 25!",
+        "tip": "💡 The emotional brain is 20x FASTER — that's why you react before you think!"
+      },
+      {
+        "emoji": "🏕️",
+        "title": "Why Your Brain Is Built This Way",
+        "content": "In prehistoric times, your ancestors faced tigers and needed tribes to survive. Running from a rock (safe mistake) was better than getting eaten (deadly mistake). Being rejected by the tribe meant death.<br><br>Today, your ancient survival software is running in a modern world of smartphones and social media. The threats have changed, but your brain's shortcuts haven't!",
+        "tip": "💡 Biases aren't bugs — they're survival features that sometimes misfire today."
+      },
+      {
+        "emoji": "🎯",
+        "title": "Confirmation Bias: The 'I Knew It!' Trap",
+        "content": "You seek information that supports what you already believe. When you find it, your brain releases dopamine (the reward chemical) — making you feel good!<br><br>This creates a dangerous loop: believe → seek proof → feel rewarded → believe harder.<br><br><strong>To fight it:</strong> Actively seek opinions that disagree with yours. Ask 'What would prove me wrong?'",
+        "tip": "💡 If nothing could change your mind, you're defending a position, not seeking truth."
+      },
+      {
+        "emoji": "⚓",
+        "title": "Anchoring Bias: Why the First Number Sticks",
+        "content": "Your brain over-relies on the first piece of information (the 'anchor') and doesn't adjust enough.<br><br>Example: A shirt priced at $60 seems like a great deal when the original price was $120 — even if $60 is still overpriced!<br><br><strong>To fight it:</strong> Ask 'Would I pay this if I saw it for the first time?' Research the actual market price.",
+        "tip": "💡 The first number is rarely the correct number. Always question the anchor."
+      },
+      {
+        "emoji": "🚌",
+        "title": "Bandwagon Effect: Jumping on Board",
+        "content": "You tend to believe or do something just because many others are, regardless of evidence. Your brain is wired to follow the group for safety.<br><br>Examples: Viral challenges, fads, holding back your opinion because 'nobody else thinks that.'<br><br><strong>To fight it:</strong> Ask 'Would I believe this if no one else did? Where is the evidence?'",
+        "tip": "💡 Popularity is not proof. Facts don't need a crowd to be true."
+      },
+      {
+        "emoji": "✨",
+        "title": "More Brain Shortcuts to Watch For",
+        "content": "<strong>Halo Effect:</strong> One good trait makes you assume they have other good traits. (Good at sports → must be smart/kind)<br><br><strong>Blind-Spot Bias:</strong> You see bias in others easily, but not in yourself.<br><br><strong>Availability Bias:</strong> You judge likelihood by how easily examples come to mind. (Plane crashes seem common because they're in the news, but driving is much more dangerous.)",
+        "tip": "💡 Smartest people are those who know they might be wrong."
+      },
+      {
+        "emoji": "🔍",
+        "title": "The SMART Check for Sources",
+        "content": "Before believing any information, check:<br><br><strong>S</strong> — Source: Who wrote this? What's their agenda?<br><strong>M</strong> — Motive: Why was this created?<br><strong>A</strong> — Accuracy: Can you verify with another source?<br><strong>R</strong> — Recency: Is this information up to date?<br><strong>T</strong> — Two sides: What's missing from this story?",
+        "tip": "💡 Accurate information is usually boring, not exciting. If a headline makes you furious or ecstatic, that's a red flag!"
+      }
+    ]
+  },
+  "quiz": {
+    "title": "Bias Knowledge Quiz",
+    "questions": [
+      {
+        "q": "What is the Amygdala's reaction time compared to the Prefrontal Cortex?",
+        "options": [
+          "They react at the same speed",
+          "Amygdala is 20ms, Prefrontal Cortex is 100+ ms",
+          "Prefrontal Cortex is faster",
+          "Neither reacts to threats"
+        ],
+        "correct": 1,
+        "explanation": "The Amygdala (emotional brain) reacts in just 20ms, while the Prefrontal Cortex (rational brain) takes 100+ ms. This speed difference is why you sometimes react emotionally before thinking rationally!"
+      },
+      {
+        "q": "Until what age does the Prefrontal Cortex typically keep developing?",
+        "options": [
+          "Age 12",
+          "Age 16",
+          "Age 25",
+          "Age 35"
+        ],
+        "correct": 2,
+        "explanation": "The Prefrontal Cortex (the 'Smart One' that handles rational thinking) keeps developing until about age 25. This is why teenagers often rely more on emotional reactions!"
+      },
+      {
+        "q": "What chemical does your brain release when you find information that confirms your beliefs?",
+        "options": [
+          "Adrenaline",
+          "Serotonin",
+          "Dopamine",
+          "Cortisol"
+        ],
+        "correct": 2,
+        "explanation": "Dopamine — the reward chemical! This is why Confirmation Bias feels so good. Your brain literally rewards you for finding supporting evidence, creating a dangerous feedback loop."
+      },
+      {
+        "q": "In Anchoring Bias, what does the 'anchor' refer to?",
+        "options": [
+          "A heavy weight holding you back",
+          "The first piece of information you receive",
+          "A type of boat",
+          "Your strongest belief"
+        ],
+        "correct": 1,
+        "explanation": "The 'anchor' is the first piece of information you receive. Your brain uses it as a reference point and doesn't adjust enough from it — like a $120 original price making $60 seem like a great deal."
+      },
+      {
+        "q": "What should you ask yourself to fight the Bandwagon Effect?",
+        "options": [
+          "What do my friends think?",
+          "Would I believe this if no one else did?",
+          "Is this trending on social media?",
+          "How many likes does this have?"
+        ],
+        "correct": 1,
+        "explanation": "'Would I believe this if no one else did?' This question removes the social pressure and forces you to evaluate the actual evidence. Popularity is not proof!"
+      },
+      {
+        "q": "The Halo Effect makes you assume someone has other good traits because they have:",
+        "options": [
+          "A lot of money",
+          "One good trait",
+          "Many friends",
+          "A college degree"
+        ],
+        "correct": 1,
+        "explanation": "One good trait! If someone is good at sports, the Halo Effect makes you assume they're also smart and kind — even without evidence. One positive trait 'spills over' to create a glowing overall impression."
+      },
+      {
+        "q": "What is Blind-Spot Bias?",
+        "options": [
+          "Not being able to see physically",
+          "Seeing bias in others but not yourself",
+          "Ignoring all evidence",
+          "Believing everything you read"
+        ],
+        "correct": 1,
+        "explanation": "Seeing bias in others but not yourself! It's the easiest bias to spot in other people and the hardest to see in yourself. That's why self-reflection is so important."
+      },
+      {
+        "q": "According to Error Management Theory, why did biases evolve?",
+        "options": [
+          "To make us smarter",
+          "To help us survive",
+          "To confuse our enemies",
+          "To improve memory"
+        ],
+        "correct": 1,
+        "explanation": "To help us survive! Biases evolved over hundreds of thousands of years. Better a safe mistake (running from a rock) than a deadly one (getting eaten). Your brain prioritized survival over accuracy."
+      },
+      {
+        "q": "What is a red flag that a headline might be biased or manipulative?",
+        "options": [
+          "It has statistics",
+          "It makes you furious or ecstatic",
+          "It's from a news website",
+          "It has a photo"
+        ],
+        "correct": 1,
+        "explanation": "If a headline makes you furious or ecstatic, that's a red flag! Accurate information is usually boring, not exciting. Strong emotional reactions are designed to bypass your rational thinking."
+      },
+      {
+        "q": "What does the 'T' in SMART Check stand for?",
+        "options": [
+          "Truth",
+          "Time",
+          "Two sides (what's missing)",
+          "Trust"
+        ],
+        "correct": 2,
+        "explanation": "Two sides — what's missing from this story? The SMART Check stands for Source, Motive, Accuracy, Recency, and Two sides. Always ask what information is being left out!"
+      }
+    ]
+  },
+  "scenarios": {
+    "title": "Real-Life Scenarios",
+    "scenarios": [
+      {
+        "title": "🛒 Shopping Scenario",
+        "text": "You see a pair of headphones 'originally $200, now $80!' The brand is unknown, but the discount seems huge. Your friend says they're amazing.",
+        "choices": [
+          {
+            "text": "Buy them immediately — 60% off is a steal!",
+            "score": 0,
+            "feedback": "❌ Anchoring Bias! The '$200' price is the anchor. You don't know if $80 is actually fair for these headphones. Always research the real market price first."
+          },
+          {
+            "text": "Check reviews and compare prices with other brands first",
+            "score": 10,
+            "feedback": "✅ Great thinking! You questioned the anchor and sought independent evidence. This is how you beat Anchoring Bias."
+          },
+          {
+            "text": "Buy them because your friend recommended them",
+            "score": 2,
+            "feedback": "⚠️ Bandwagon Effect + Halo Effect! Your friend's opinion is valuable, but it shouldn't replace your own research. They might have different needs or be biased too."
+          }
+        ]
+      },
+      {
+        "title": "📱 Social Media Scenario",
+        "text": "A viral post claims a celebrity did something terrible. Thousands have shared it. The source is a gossip blog you've never heard of.",
+        "choices": [
+          {
+            "text": "Share it to warn your friends",
+            "score": 0,
+            "feedback": "❌ Bandwagon + Availability Bias! Just because many people share it doesn't make it true. Viral misinformation spreads exactly this way."
+          },
+          {
+            "text": "Check reputable news sources before believing or sharing",
+            "score": 10,
+            "feedback": "✅ Excellent! You used the SMART Check. Reputable sources, verification, and waiting for facts are how you fight bias in the information age."
+          },
+          {
+            "text": "Believe it because 'where there's smoke, there's fire'",
+            "score": 1,
+            "feedback": "⚠️ Confirmation Bias! You're assuming guilt without evidence. 'Smoke' can be manufactured. Always demand evidence, not assumptions."
+          }
+        ]
+      },
+      {
+        "title": "👥 Group Project Scenario",
+        "text": "In a group project, someone disagrees with your idea. You feel defensive and want to prove them wrong.",
+        "choices": [
+          {
+            "text": "Defend your idea strongly and list why they're wrong",
+            "score": 2,
+            "feedback": "⚠️ Confirmation Bias + Ego Protection! Your brain is trying to protect your self-image. But genuine growth comes from considering other perspectives."
+          },
+          {
+            "text": "Genuinely consider their point and look for merit in it",
+            "score": 10,
+            "feedback": "✅ Perfect! You activated your Prefrontal Cortex instead of letting your Amygdala react. This is how smart people make better decisions."
+          },
+          {
+            "text": "Agree with them to avoid conflict",
+            "score": 3,
+            "feedback": "⚠️ Bandwagon Effect! Just going along isn't the same as genuine consideration. You're still not using critical thinking — you're just avoiding it."
+          }
+        ]
+      },
+      {
+        "title": "🏫 School Election Scenario",
+        "text": "Your school is voting for class president. The most popular student is running, and everyone says they'll vote for them.",
+        "choices": [
+          {
+            "text": "Vote for them too — they're obviously the best choice",
+            "score": 0,
+            "feedback": "❌ Bandwagon Effect! Popularity doesn't equal capability. You're following the crowd instead of evaluating the candidates yourself."
+          },
+          {
+            "text": "Research each candidate's actual plans and qualifications",
+            "score": 10,
+            "feedback": "✅ Outstanding! You removed social pressure and evaluated based on evidence. This is independent thinking at its best."
+          },
+          {
+            "text": "Vote for the underdog because going against the crowd is cool",
+            "score": 3,
+            "feedback": "⚠️ Reverse Bandwagon! You're still letting the crowd dictate your choice — just in the opposite direction. Evaluate candidates on merit, not popularity or rebellion."
+          }
+        ]
+      },
+      {
+        "title": "📰 News Headline Scenario",
+        "text": "You read a headline: 'SHOCKING: Popular Drink Causes Cancer!' It makes you feel scared and angry.",
+        "choices": [
+          {
+            "text": "Stop drinking it immediately and tell everyone",
+            "score": 0,
+            "feedback": "❌ Multiple biases! The headline used emotional manipulation (fear/anger) to bypass your thinking. You reacted with your Amygdala, not your Prefrontal Cortex."
+          },
+          {
+            "text": "Check the actual study, sample size, and who funded the research",
+            "score": 10,
+            "feedback": "✅ Brilliant detective work! You recognized the emotional manipulation and sought the actual evidence. This is exactly how to evaluate sensational claims."
+          },
+          {
+            "text": "Ignore it because everything causes cancer these days",
+            "score": 2,
+            "feedback": "⚠️ Availability Bias in reverse! Just because you've seen many such claims doesn't mean this one is false. Each claim deserves independent evaluation."
+          }
+        ]
+      },
+      {
+        "title": "🎵 Music Opinion Scenario",
+        "text": "You strongly dislike a popular musician. A friend asks you to name something impressive about them.",
+        "choices": [
+          {
+            "text": "I can't — they're completely talentless",
+            "score": 0,
+            "feedback": "❌ Confirmation Bias! You're so committed to your negative view that you can't find ANY merit. If nothing could change your mind, you're defending a position, not seeking truth."
+          },
+          {
+            "text": "Try to find at least one thing you can acknowledge",
+            "score": 10,
+            "feedback": "✅ Excellent! This exercise forces your brain to consider disconfirming evidence. It's uncomfortable but it's how you grow and overcome bias."
+          },
+          {
+            "text": "Change the subject to avoid answering",
+            "score": 2,
+            "feedback": "⚠️ Avoidance! You're protecting your existing belief by refusing to engage. Growth requires discomfort sometimes."
+          }
+        ]
+      }
+    ]
+  },
+  "matching": {
+    "title": "Bias Matcher",
+    "pairs": [
+      {
+        "bias": "Confirmation Bias",
+        "example": "Only following news sources that agree with your political views"
+      },
+      {
+        "bias": "Anchoring Bias",
+        "example": "Thinking a $50 shirt is cheap because the store showed $100 first"
+      },
+      {
+        "bias": "Bandwagon Effect",
+        "example": "Downloading an app just because 'everyone at school has it'"
+      },
+      {
+        "bias": "Halo Effect",
+        "example": "Assuming a good-looking actor is also intelligent and kind"
+      },
+      {
+        "bias": "Blind-Spot Bias",
+        "example": "Pointing out your friend's biased opinion while ignoring your own"
+      },
+      {
+        "bias": "Availability Bias",
+        "example": "Being more afraid of plane crashes than car accidents"
+      },
+      {
+        "bias": "Error Management Theory",
+        "example": "Your ancestor running from a shadow that might be a tiger"
+      },
+      {
+        "bias": "Dopamine Reward",
+        "example": "Feeling good when you find an article that supports your belief"
+      }
+    ]
+  },
+  "detective": {
+    "title": "Bias Detective",
+    "cases": [
+      {
+        "title": "Case #1: The Influencer Post",
+        "text": "An influencer posts: 'This skincare product completely changed my life! I've never looked better. Use my code SKIN20 for 20% off! #ad #skincare #glowup'",
+        "clues": [
+          {
+            "text": "They use their own discount code",
+            "bias": "Financial incentive / hidden motive"
+          },
+          {
+            "text": "'Completely changed my life' is extreme language",
+            "bias": "Emotional manipulation / exaggeration"
+          },
+          {
+            "text": "Only positive claims, no downsides mentioned",
+            "bias": "Confirmation Bias / one-sided information"
+          },
+          {
+            "text": "#ad tag is present but might be overlooked",
+            "bias": "Sponsored content disguised as genuine opinion"
+          }
+        ]
+      },
+      {
+        "title": "Case #2: The News Article",
+        "text": "Headline: 'LOCAL TEEN SAVES DOZENS IN HEROIC ACT!' Article: A teenager helped an elderly neighbor carry groceries. Only 3 sentences long.",
+        "clues": [
+          {
+            "text": "'Dozens' is a huge exaggeration for helping one person",
+            "bias": "Clickbait / sensationalism"
+          },
+          {
+            "text": "Very short article with dramatic headline",
+            "bias": "Headline doesn't match content quality"
+          },
+          {
+            "text": "Uses emotional words like 'heroic' to grab attention",
+            "bias": "Emotional manipulation"
+          },
+          {
+            "text": "No sources or verification of the event",
+            "bias": "Lack of evidence / poor sourcing"
+          }
+        ]
+      },
+      {
+        "title": "Case #3: The Online Review",
+        "text": "Product review: '1 STAR! TERRIBLE! Broke after 2 days! DO NOT BUY! Worst company ever! Save your money!' Posted same day as 50 other 1-star reviews.",
+        "clues": [
+          {
+            "text": "Extreme language with ALL CAPS shouting",
+            "bias": "Emotional overreaction / amygdala-driven"
+          },
+          {
+            "text": "Posted on same day as many similar reviews",
+            "bias": "Possible coordinated attack / bot activity"
+          },
+          {
+            "text": "No details about how it broke or usage",
+            "bias": "Lack of specific evidence"
+          },
+          {
+            "text": "Only negative, no attempt at balanced view",
+            "bias": "Confirmation Bias / one-sided"
+          }
+        ]
+      },
+      {
+        "title": "Case #4: The Political Meme",
+        "text": "Meme shows a politician with a quote: 'I hate poor people and want them to suffer.' No source cited. Shared 50,000 times.",
+        "clues": [
+          {
+            "text": "Quote seems too extreme to be real",
+            "bias": "Straw man / fabricated quote"
+          },
+          {
+            "text": "No source or context provided",
+            "bias": "Unverifiable claim"
+          },
+          {
+            "text": "Designed to provoke strong negative emotion",
+            "bias": "Emotional manipulation"
+          },
+          {
+            "text": "High share count used as credibility signal",
+            "bias": "Bandwagon Effect / popularity = truth fallacy"
+          }
+        ]
+      }
+    ]
+  },
+  "speed": {
+    "title": "Speed Challenge",
+    "questions": [
+      {
+        "text": "You only read news from sources you agree with.",
+        "bias": "Confirmation Bias",
+        "options": [
+          "Confirmation Bias",
+          "Anchoring Bias",
+          "Bandwagon Effect",
+          "Halo Effect"
+        ]
+      },
+      {
+        "text": "A $200 jacket marked down to $100 seems like a great deal.",
+        "bias": "Anchoring Bias",
+        "options": [
+          "Bandwagon Effect",
+          "Anchoring Bias",
+          "Blind-Spot Bias",
+          "Availability Bias"
+        ]
+      },
+      {
+        "text": "You assume the class president is also good at math because they're popular.",
+        "bias": "Halo Effect",
+        "options": [
+          "Confirmation Bias",
+          "Bandwagon Effect",
+          "Halo Effect",
+          "Anchoring Bias"
+        ]
+      },
+      {
+        "text": "You notice your friend's biased opinion but never examine your own.",
+        "bias": "Blind-Spot Bias",
+        "options": [
+          "Halo Effect",
+          "Anchoring Bias",
+          "Blind-Spot Bias",
+          "Confirmation Bias"
+        ]
+      },
+      {
+        "text": "You share a TikTok challenge because 'everyone is doing it.'",
+        "bias": "Bandwagon Effect",
+        "options": [
+          "Anchoring Bias",
+          "Bandwagon Effect",
+          "Halo Effect",
+          "Availability Bias"
+        ]
+      },
+      {
+        "text": "You think shark attacks are common because you saw one in a movie.",
+        "bias": "Availability Bias",
+        "options": [
+          "Confirmation Bias",
+          "Blind-Spot Bias",
+          "Availability Bias",
+          "Bandwagon Effect"
+        ]
+      },
+      {
+        "text": "Your brain releases dopamine when you find info that supports your belief.",
+        "bias": "Confirmation Bias",
+        "options": [
+          "Confirmation Bias",
+          "Anchoring Bias",
+          "Halo Effect",
+          "Bandwagon Effect"
+        ]
+      },
+      {
+        "text": "You judge a product's quality by its high original price tag.",
+        "bias": "Anchoring Bias",
+        "options": [
+          "Bandwagon Effect",
+          "Halo Effect",
+          "Anchoring Bias",
+          "Blind-Spot Bias"
+        ]
+      },
+      {
+        "text": "You vote for a candidate because all your friends support them.",
+        "bias": "Bandwagon Effect",
+        "options": [
+          "Confirmation Bias",
+          "Bandwagon Effect",
+          "Anchoring Bias",
+          "Availability Bias"
+        ]
+      },
+      {
+        "text": "You think a good athlete must also be honest and hardworking.",
+        "bias": "Halo Effect",
+        "options": [
+          "Blind-Spot Bias",
+          "Halo Effect",
+          "Confirmation Bias",
+          "Bandwagon Effect"
+        ]
+      },
+      {
+        "text": "You feel scared of flying but not driving, despite driving being more dangerous.",
+        "bias": "Availability Bias",
+        "options": [
+          "Anchoring Bias",
+          "Availability Bias",
+          "Bandwagon Effect",
+          "Halo Effect"
+        ]
+      },
+      {
+        "text": "You dismiss evidence against your favorite team because 'they're the best.'",
+        "bias": "Confirmation Bias",
+        "options": [
+          "Confirmation Bias",
+          "Blind-Spot Bias",
+          "Anchoring Bias",
+          "Halo Effect"
+        ]
+      }
+    ]
+  }
+}

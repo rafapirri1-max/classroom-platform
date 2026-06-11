@@ -13,8 +13,13 @@ import {
   type RoomRunContext,
   type TrackCaller,
 } from '@/lib/session-lifecycle'
+import { DiscussionVotingPanel } from '@/lib/discussion/discussion-voting-panel'
+import { fetchActiveDiscussionConfig } from '@/lib/discussion/fetch-active'
+import type { DiscussionLaunchConfig } from '@/lib/discussion/types'
 import { fetchActivePollConfig } from '@/lib/poll/fetch-active'
 import type { PollLaunchConfig } from '@/lib/poll/types'
+import { fetchActiveWordCloudConfig } from '@/lib/wordcloud/fetch-active'
+import type { WordCloudLaunchConfig } from '@/lib/wordcloud/types'
 import { supabase, getUserProfile } from '@/lib/supabase'
 
 const callTrack: TrackCaller = async (action, data) => {
@@ -45,6 +50,18 @@ function StudentContent() {
   const [pollVotedOptionId, setPollVotedOptionId] = useState<string | null>(null)
   const [pollVoting, setPollVoting] = useState(false)
   const [pollVoteError, setPollVoteError] = useState('')
+  const [discussionConfig, setDiscussionConfig] = useState<DiscussionLaunchConfig | null>(null)
+  const [discussionSubmitted, setDiscussionSubmitted] = useState(false)
+  const [discussionResponseText, setDiscussionResponseText] = useState('')
+  const [discussionSubmitting, setDiscussionSubmitting] = useState(false)
+  const [discussionSubmitError, setDiscussionSubmitError] = useState('')
+  const [wordCloudConfig, setWordCloudConfig] = useState<WordCloudLaunchConfig | null>(null)
+  const [wordCloudSubmitted, setWordCloudSubmitted] = useState(false)
+  const [wordCloudSubmittedText, setWordCloudSubmittedText] = useState('')
+  const [wordCloudAnswerText, setWordCloudAnswerText] = useState('')
+  const [wordCloudSubmitting, setWordCloudSubmitting] = useState(false)
+  const [wordCloudSubmitError, setWordCloudSubmitError] = useState('')
+  const [profileLoaded, setProfileLoaded] = useState(false)
 
   const profileRef = useRef<any>(null)
   const sessionIdRef = useRef<string | null>(null)
@@ -67,8 +84,14 @@ function StudentContent() {
       setRoom(data as RoomRunContext)
       const config = await fetchActivePollConfig(supabase, data)
       setPollConfig(config)
+      const discConfig = await fetchActiveDiscussionConfig(supabase, data)
+      setDiscussionConfig(discConfig)
+      const wcConfig = await fetchActiveWordCloudConfig(supabase, data)
+      setWordCloudConfig(wcConfig)
     } else {
       setPollConfig(null)
+      setDiscussionConfig(null)
+      setWordCloudConfig(null)
     }
     return data as RoomRunContext | null
   }, [roomId])
@@ -133,6 +156,300 @@ function StudentContent() {
 
   const activePollInstanceId =
     room?.current_activity === 'poll' ? room?.active_activity_instance_id : null
+
+  const activeDiscussionInstanceId =
+    room?.current_activity === 'discussion' ? room?.active_activity_instance_id : null
+
+  const activeWordCloudInstanceId =
+    room?.current_activity === 'wordcloud' ? room?.active_activity_instance_id : null
+
+  useEffect(() => {
+    if (!activeWordCloudInstanceId || !room) {
+      return
+    }
+
+    let cancelled = false
+
+    async function refreshWordCloudConfig() {
+      const config = await fetchActiveWordCloudConfig(supabase, room!)
+      if (!cancelled) {
+        setWordCloudConfig(config)
+      }
+    }
+
+    void refreshWordCloudConfig()
+    const interval = setInterval(refreshWordCloudConfig, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [activeWordCloudInstanceId, room])
+
+  useEffect(() => {
+    if (!activeWordCloudInstanceId || !profile?.id) {
+      setWordCloudSubmitted(false)
+      setWordCloudSubmittedText('')
+      setWordCloudAnswerText('')
+      setWordCloudSubmitError('')
+      return
+    }
+
+    let cancelled = false
+
+    async function refreshMyWordCloudResponse() {
+      try {
+        const params = new URLSearchParams({
+          activity_instance_id: activeWordCloudInstanceId!,
+          student_id: profile!.id,
+        })
+        const res = await fetch(`/api/wordcloud/my-response?${params}`)
+        const json = await res.json()
+        if (!cancelled && res.ok && json.response) {
+          setWordCloudSubmitted(true)
+          setWordCloudSubmittedText(json.response.answer_text)
+        } else if (!cancelled) {
+          setWordCloudSubmitted(false)
+          setWordCloudSubmittedText('')
+        }
+      } catch {
+        if (!cancelled) {
+          setWordCloudSubmitted(false)
+          setWordCloudSubmittedText('')
+        }
+      }
+    }
+
+    void refreshMyWordCloudResponse()
+
+    const shouldPoll = wordCloudConfig?.phase !== 'revealed'
+    const interval = shouldPoll ? setInterval(refreshMyWordCloudResponse, 3000) : undefined
+
+    return () => {
+      cancelled = true
+      if (interval) clearInterval(interval)
+    }
+  }, [activeWordCloudInstanceId, profile?.id, wordCloudConfig?.phase])
+
+  useEffect(() => {
+    if (!activeDiscussionInstanceId || !room) {
+      return
+    }
+
+    let cancelled = false
+
+    async function refreshDiscussionConfig() {
+      const config = await fetchActiveDiscussionConfig(supabase, room!)
+      if (!cancelled) {
+        setDiscussionConfig(config)
+      }
+    }
+
+    void refreshDiscussionConfig()
+    const interval = setInterval(refreshDiscussionConfig, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [activeDiscussionInstanceId, room])
+
+  useEffect(() => {
+    if (!activeDiscussionInstanceId || !profile?.id) {
+      setDiscussionSubmitted(false)
+      setDiscussionResponseText('')
+      setDiscussionSubmitError('')
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          activity_instance_id: activeDiscussionInstanceId,
+          student_id: profile.id,
+        })
+        const res = await fetch(`/api/discussion/my-response?${params}`)
+        const json = await res.json()
+        if (!cancelled && res.ok && json.submitted) {
+          setDiscussionSubmitted(true)
+        } else if (!cancelled) {
+          setDiscussionSubmitted(false)
+        }
+      } catch {
+        if (!cancelled) setDiscussionSubmitted(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeDiscussionInstanceId, profile?.id])
+
+  const submitDiscussionResponse = useCallback(async () => {
+    if (discussionSubmitted || discussionSubmitting) {
+      return
+    }
+
+    if (!profile?.id) {
+      setDiscussionSubmitError('You must be signed in as a student to submit a response.')
+      return
+    }
+
+    const trimmed = discussionResponseText.trim()
+    if (!trimmed) {
+      setDiscussionSubmitError('Please enter a response')
+      return
+    }
+
+    setDiscussionSubmitting(true)
+    setDiscussionSubmitError('')
+
+    try {
+      const { data: freshRoom, error: roomError } = await supabase
+        .from('rooms')
+        .select('id, current_activity, active_activity_instance_id, status')
+        .eq('id', roomId)
+        .maybeSingle()
+
+      if (roomError) {
+        throw new Error(roomError.message)
+      }
+      if (!freshRoom || freshRoom.status !== 'active') {
+        throw new Error('This room is no longer active.')
+      }
+      if (freshRoom.current_activity !== 'discussion' || !freshRoom.active_activity_instance_id) {
+        throw new Error('Discussion is not active right now. Wait for your teacher to launch it.')
+      }
+
+      const res = await fetch('/api/discussion/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: freshRoom.id,
+          activity_instance_id: freshRoom.active_activity_instance_id,
+          student_id: profile.id,
+          response_text: trimmed,
+        }),
+      })
+
+      let json: { error?: string; code?: string } = {}
+      try {
+        json = (await res.json()) as { error?: string; code?: string }
+      } catch {
+        throw new Error(`Submit failed (${res.status})`)
+      }
+
+      if (!res.ok || json.error) {
+        throw new Error(json.error || `Submit failed (${res.status})`)
+      }
+
+      setDiscussionSubmitted(true)
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              current_activity: freshRoom.current_activity,
+              active_activity_instance_id: freshRoom.active_activity_instance_id,
+            }
+          : prev
+      )
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Submit failed'
+      setDiscussionSubmitError(message)
+    } finally {
+      setDiscussionSubmitting(false)
+    }
+  }, [
+    roomId,
+    profile?.id,
+    discussionSubmitted,
+    discussionSubmitting,
+    discussionResponseText,
+  ])
+
+  const submitWordCloudAnswer = useCallback(async () => {
+    if (wordCloudSubmitted || wordCloudSubmitting) {
+      return
+    }
+
+    if (!profile?.id) {
+      setWordCloudSubmitError('You must be signed in as a student to submit an answer.')
+      return
+    }
+
+    const trimmed = wordCloudAnswerText.trim()
+    if (!trimmed) {
+      setWordCloudSubmitError('Please enter an answer')
+      return
+    }
+
+    setWordCloudSubmitting(true)
+    setWordCloudSubmitError('')
+
+    try {
+      const { data: freshRoom, error: roomError } = await supabase
+        .from('rooms')
+        .select('id, current_activity, active_activity_instance_id, status')
+        .eq('id', roomId)
+        .maybeSingle()
+
+      if (roomError) {
+        throw new Error(roomError.message)
+      }
+      if (!freshRoom || freshRoom.status !== 'active') {
+        throw new Error('This room is no longer active.')
+      }
+      if (freshRoom.current_activity !== 'wordcloud' || !freshRoom.active_activity_instance_id) {
+        throw new Error('Word cloud is not active right now. Wait for your teacher to launch it.')
+      }
+
+      const res = await fetch('/api/wordcloud/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: freshRoom.id,
+          activity_instance_id: freshRoom.active_activity_instance_id,
+          student_id: profile.id,
+          answer_text: trimmed,
+        }),
+      })
+
+      let json: { error?: string } = {}
+      try {
+        json = (await res.json()) as { error?: string }
+      } catch {
+        throw new Error(`Submit failed (${res.status})`)
+      }
+
+      if (!res.ok || json.error) {
+        throw new Error(json.error || `Submit failed (${res.status})`)
+      }
+
+      setWordCloudSubmitted(true)
+      setWordCloudSubmittedText(trimmed)
+      setWordCloudAnswerText('')
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              current_activity: freshRoom.current_activity,
+              active_activity_instance_id: freshRoom.active_activity_instance_id,
+            }
+          : prev
+      )
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Submit failed'
+      setWordCloudSubmitError(message)
+    } finally {
+      setWordCloudSubmitting(false)
+    }
+  }, [
+    roomId,
+    profile?.id,
+    wordCloudSubmitted,
+    wordCloudSubmitting,
+    wordCloudAnswerText,
+  ])
 
   useEffect(() => {
     if (!activePollInstanceId || !profile?.id) {
@@ -200,18 +517,20 @@ function StudentContent() {
 
   useEffect(() => {
     loadRoom().then(() => setLoading(false))
-    getUserProfile().then(async (prof) => {
-      setProfile(prof)
-      if (!prof?.id) {
-        setEnrolledInClass(null)
-        return
-      }
-      const { count } = await supabase
-        .from('class_enrollments')
-        .select('*', { count: 'exact', head: true })
-        .eq('student_id', prof.id)
-      setEnrolledInClass((count ?? 0) > 0)
-    })
+    getUserProfile({ ensureIfMissing: true, role: 'student' })
+      .then(async (prof) => {
+        setProfile(prof)
+        if (!prof?.id) {
+          setEnrolledInClass(null)
+          return
+        }
+        const { count } = await supabase
+          .from('class_enrollments')
+          .select('*', { count: 'exact', head: true })
+          .eq('student_id', prof.id)
+        setEnrolledInClass((count ?? 0) > 0)
+      })
+      .finally(() => setProfileLoaded(true))
 
     const channel = supabase.channel(`student-room-${roomId}`)
       .on(
@@ -221,9 +540,15 @@ function StudentContent() {
           const roomData = payload.new as RoomRunContext
           setRoom(roomData)
           void fetchActivePollConfig(supabase, roomData).then(setPollConfig)
+          void fetchActiveDiscussionConfig(supabase, roomData).then(setDiscussionConfig)
           if (roomData.current_activity !== 'poll') {
             setPollVotedOptionId(null)
             setPollVoteError('')
+          }
+          if (roomData.current_activity !== 'discussion') {
+            setDiscussionSubmitted(false)
+            setDiscussionResponseText('')
+            setDiscussionSubmitError('')
           }
 
           const studentId = profileRef.current?.id
@@ -422,12 +747,23 @@ function StudentContent() {
 
   const activity = room.current_activity || 'waiting'
   const showTrackedIframe = isTrackableActivity(activity)
+  const isDiscussionVoting =
+    activity === 'discussion' && discussionConfig?.phase === 'voting'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950">
-      <div className="bg-white/10 backdrop-blur-lg border-b border-white/10 px-4 py-3 flex items-center justify-between">
-        <div className="text-white font-semibold">👤 {name}</div>
-        <div className="text-accent font-bold tracking-widest">{room.code}</div>
+    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950 flex flex-col">
+      <div className="bg-white/10 backdrop-blur-lg border-b border-white/10 px-4 sm:px-6 py-3 flex items-center justify-between shrink-0">
+        <div className="text-white font-semibold text-sm sm:text-base truncate pr-3">
+          {isDiscussionVoting ? (
+            <span className="flex items-center gap-2">
+              <span aria-hidden>💬</span>
+              <span>Discussion Voting</span>
+            </span>
+          ) : (
+            <span>👤 {name}</span>
+          )}
+        </div>
+        <div className="text-accent font-bold tracking-widest text-sm sm:text-base shrink-0">{room.code}</div>
       </div>
 
       {profile && enrolledInClass === false && (
@@ -453,7 +789,7 @@ function StudentContent() {
         </div>
       )}
 
-      <div className="p-4">
+      <div className={isDiscussionVoting ? 'flex-1 flex items-center justify-center px-3 sm:px-5 py-4' : 'p-4'}>
         {activity === 'waiting' && (
           <div className="min-h-[80vh] flex items-center justify-center">
             <div className="text-center">
@@ -468,10 +804,99 @@ function StudentContent() {
           <div className="h-[calc(100vh-60px)]">
             <iframe
               key={`${activity}-${gameAttemptKey}`}
-              src={`/games/${activity}/index.html`}
+              src={
+                activity === 'bias-detective' && room?.active_activity_instance_id
+                  ? `/games/${activity}/index.html?activity_instance_id=${encodeURIComponent(room.active_activity_instance_id)}`
+                  : `/games/${activity}/index.html`
+              }
               className="w-full h-full border-0 rounded-xl"
               title="Game"
             />
+          </div>
+        )}
+
+        {activity === 'discussion' && (
+          <div
+            className={`mx-auto w-full ${
+              discussionConfig?.phase === 'voting' ? 'max-w-[1200px]' : 'max-w-lg mt-6 sm:mt-8'
+            }`}
+          >
+            {discussionConfig ? (
+              <>
+                {discussionConfig.phase !== 'voting' ? (
+                  <>
+                    <h2 className="text-xl font-bold text-white mb-6 text-center">💬 Discussion</h2>
+                    <p className="text-white text-center font-medium mb-6 text-lg">
+                      {discussionConfig.question}
+                    </p>
+                  </>
+                ) : null}
+                {!profileLoaded ? (
+                  <p className="text-center text-indigo-200 text-sm">Checking sign-in...</p>
+                ) : !profile?.id ? (
+                  <div className="text-center space-y-3">
+                    <p className="text-amber-200 text-sm">
+                      You must be signed in as a student to participate.
+                    </p>
+                    <a
+                      href="/login"
+                      className="inline-block px-4 py-2 rounded-xl bg-primary text-white font-semibold hover:opacity-90"
+                    >
+                      Sign in
+                    </a>
+                  </div>
+                ) : discussionConfig.phase === 'voting' && room?.active_activity_instance_id ? (
+                  <DiscussionVotingPanel
+                    roomId={roomId}
+                    activityInstanceId={room.active_activity_instance_id}
+                    studentId={profile.id}
+                    question={discussionConfig.question}
+                    anonymous={discussionConfig.anonymous}
+                  />
+                ) : discussionConfig.phase === 'results' ? (
+                  <div className="text-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-violet-500/20 border border-violet-500/40 text-violet-200">
+                      <span className="font-semibold">Voting has ended</span>
+                    </div>
+                    <p className="text-indigo-300 text-sm mt-4">
+                      See the presentation screen for top responses.
+                    </p>
+                  </div>
+                ) : discussionSubmitted ? (
+                  <div className="text-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-green-500/20 border border-green-500/40 text-green-200">
+                      <span>✓</span>
+                      <span className="font-semibold">Response submitted</span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      value={discussionResponseText}
+                      onChange={(e) => setDiscussionResponseText(e.target.value)}
+                      placeholder="Write your response..."
+                      maxLength={2000}
+                      rows={6}
+                      disabled={discussionSubmitting}
+                      className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 mb-4 focus:outline-none focus:border-accent resize-none disabled:opacity-60"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void submitDiscussionResponse()}
+                      disabled={discussionSubmitting || !discussionResponseText.trim()}
+                      className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:opacity-90 disabled:opacity-50"
+                    >
+                      {discussionSubmitting ? 'Submitting...' : 'Submit Response'}
+                    </button>
+                    {discussionSubmitError && (
+                      <p className="text-center text-red-300 text-sm mt-4">{discussionSubmitError}</p>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="text-center text-indigo-200">Loading discussion...</p>
+            )}
           </div>
         )}
 
@@ -528,19 +953,84 @@ function StudentContent() {
 
         {activity === 'wordcloud' && (
           <div className="max-w-md mx-auto mt-8">
-            <h2 className="text-xl font-bold text-white mb-2 text-center">☁️ Word Cloud</h2>
-            <p className="text-indigo-200 text-center mb-6">Type one word that comes to mind</p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Enter a word..."
-                maxLength={20}
-                className="flex-1 px-4 py-3 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-accent"
-              />
-              <button className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:opacity-90">
-                Submit
-              </button>
-            </div>
+            <h2 className="text-xl font-bold text-white mb-6 text-center">☁️ Word Cloud</h2>
+            {wordCloudConfig ? (
+              <>
+                <p className="text-white text-center font-medium mb-6 text-lg">
+                  {wordCloudConfig.question}
+                </p>
+                {!profileLoaded ? (
+                  <p className="text-center text-indigo-200 text-sm">Checking sign-in...</p>
+                ) : !profile?.id ? (
+                  <div className="text-center space-y-3">
+                    <p className="text-amber-200 text-sm">
+                      You must be signed in as a student to participate.
+                    </p>
+                    <a
+                      href="/login"
+                      className="inline-block px-4 py-2 rounded-xl bg-primary text-white font-semibold hover:opacity-90"
+                    >
+                      Sign in
+                    </a>
+                  </div>
+                ) : wordCloudSubmitted ? (
+                  <div className="text-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-green-500/20 border border-green-500/40 text-green-200 mb-4">
+                      <span>✓</span>
+                      <span className="font-semibold">Answer submitted</span>
+                    </div>
+                    <p className="text-indigo-200 text-sm">
+                      Your answer:{' '}
+                      <span className="text-white font-medium">{wordCloudSubmittedText}</span>
+                    </p>
+                    {wordCloudConfig.phase === 'revealed' && (
+                      <p className="text-indigo-300 text-sm mt-4">
+                        The word cloud is now on the presentation screen.
+                      </p>
+                    )}
+                  </div>
+                ) : wordCloudConfig.phase === 'revealed' ? (
+                  <div className="text-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-violet-500/20 border border-violet-500/40 text-violet-200">
+                      <span className="font-semibold">Collection has ended</span>
+                    </div>
+                    <p className="text-indigo-300 text-sm mt-4">
+                      Your teacher has revealed the word cloud on the presentation screen.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={wordCloudAnswerText}
+                        onChange={(e) => setWordCloudAnswerText(e.target.value)}
+                        placeholder="Enter a short answer..."
+                        maxLength={wordCloudConfig.maxAnswerLength}
+                        disabled={wordCloudSubmitting}
+                        className="flex-1 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:border-accent disabled:opacity-60"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void submitWordCloudAnswer()}
+                        disabled={wordCloudSubmitting || !wordCloudAnswerText.trim()}
+                        className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:opacity-90 disabled:opacity-50"
+                      >
+                        {wordCloudSubmitting ? '...' : 'Submit'}
+                      </button>
+                    </div>
+                    <p className="text-center text-indigo-300/70 text-xs mt-3">
+                      Up to {wordCloudConfig.maxAnswerLength} characters
+                    </p>
+                    {wordCloudSubmitError && (
+                      <p className="text-center text-red-300 text-sm mt-4">{wordCloudSubmitError}</p>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="text-center text-indigo-200">Loading word cloud...</p>
+            )}
           </div>
         )}
       </div>
